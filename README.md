@@ -34,7 +34,45 @@ This will:
 - Fit a 3-component von Mises-Fisher mixture model
 - Create visualizations of the results
 
-### Using Your Own Data
+### Embedding Generation
+
+Use the new `generate_embeddings.py` script to generate embeddings for different datasets:
+
+#### COCO Dataset
+```bash
+python generate_embeddings.py --dataset coco --split train2017 --max_samples 1000
+```
+
+#### LAION Sample (text-only demonstration)
+```bash
+python generate_embeddings.py --dataset laion_sample
+```
+
+#### Custom Images
+```bash
+python generate_embeddings.py --dataset custom_images --custom_path /path/to/images
+```
+
+#### Custom Text File
+```bash
+python generate_embeddings.py --dataset custom_text --custom_path your_texts.txt
+```
+
+#### Different CLIP Models
+```bash
+# Using OpenCLIP with LAION pretrained models
+python generate_embeddings.py --dataset coco --model_name ViT-L-14 --pretrained_name laion2b_s32b_b82k --use_openclip
+
+# Using original CLIP models
+python generate_embeddings.py --dataset coco --model_name ViT-L/14
+```
+
+#### Interactive Examples
+```bash
+python example_generate_embeddings.py
+```
+
+### Using Your Own Data with Main Script
 
 #### With Text Data
 
@@ -65,6 +103,7 @@ python main.py --text_file texts.txt --image_dir /path/to/images --n_components 
 
 ## Command Line Options
 
+### Main Script (`main.py`)
 - `--n_components`: Number of mixture components (default: 5)
 - `--max_iterations`: Maximum EM iterations (default: 100)
 - `--tolerance`: Convergence tolerance (default: 1e-6)
@@ -75,6 +114,21 @@ python main.py --text_file texts.txt --image_dir /path/to/images --n_components 
 - `--output_dir`: Output directory for results (default: results)
 - `--clip_model`: CLIP model to use (default: ViT-B/32)
 - `--test_split`: Fraction of data to use for testing (default: 0.2)
+
+### Embedding Generation (`generate_embeddings.py`)
+- `--dataset`: Dataset to use (choices: coco, laion_sample, custom_images, custom_text)
+- `--data_dir`: Data directory (default: data)
+- `--custom_path`: Path to custom images dir or text file
+- `--split`: COCO dataset split (train2017, val2017)
+- `--max_samples`: Maximum number of samples to process
+- `--model_name`: CLIP model name (default: ViT-B/32)
+- `--pretrained_name`: Pretrained checkpoint name (for OpenCLIP)
+- `--use_openclip`: Use OpenCLIP instead of original CLIP
+- `--device`: Device to use (cuda/cpu)
+- `--cache_file`: Output cache file path
+- `--force_recompute`: Force recompute even if cache exists
+- `--include_images`: Include image embeddings (default: True)
+- `--include_texts`: Include text embeddings (default: True)
 
 ## Output
 
@@ -130,11 +184,14 @@ Where `π_i` are the mixture weights.
 ## File Structure
 
 - `clip_embeddings.py`: CLIP embedding extraction functionality
+- `generate_embeddings.py`: **NEW** Comprehensive embedding generation for different datasets
+- `example_generate_embeddings.py`: **NEW** Interactive examples for embedding generation  
 - `von_mises_fisher.py`: Von Mises-Fisher distribution implementation
 - `em_algorithm.py`: EM algorithm for fitting mixture models
 - `visualization.py`: Visualization tools
 - `main.py`: Main script with command-line interface
 - `example.py`: Simple example script
+- `cardelph_projection.py`: Existing projection visualization script
 - `requirements.txt`: Python dependencies
 
 ## Advanced Usage
