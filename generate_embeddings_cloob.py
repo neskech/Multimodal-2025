@@ -182,7 +182,7 @@ def load_embeddings(cache_file: str) -> Tuple[np.ndarray, List[str], List[str], 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate CLIP embeddings for various datasets")
+        description="Generate CLOOB embeddings for various datasets")
 
     # Dataset selection
     parser.add_argument("--dataset", type=str, choices=["coco", "laion_sample", "custom_images", "custom_text"],
