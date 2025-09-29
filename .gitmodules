@@ -1,0 +1,3 @@
+[submodule "cloob"]
+	path = cloob
+	url = https://github.com/crowsonkb/cloob-training.git
