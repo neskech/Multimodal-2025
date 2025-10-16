@@ -22,31 +22,32 @@ class CLIPModel(nn.Module):
     def __init__(self, device: str = None):
         """
         Initialize CLIP model.
-        
+
         Args:
             device: Device to run on ('cuda', 'cpu', or None for auto-detect)
         """
         super().__init__()
-        self.device = device or ("cuda"
-                                 if torch.cuda.is_available() else "cpu")
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = MODEL_NAME
 
         # Load CLIP model
         self.model, self.preprocess = clip.load(MODEL_NAME, device=self.device)
 
-    def encode_image_tensors(self,
-                             image_tensors: torch.Tensor,
-                             requires_grad: bool = True,
-                             normalize: bool = False) -> torch.Tensor:
+    def encode_image_tensors(
+        self,
+        image_tensors: torch.Tensor,
+        requires_grad: bool = True,
+        normalize: bool = False,
+    ) -> torch.Tensor:
         """
         Encode image tensors to embeddings.
-        
+
         Args:
             image_tensors: Batch of image tensors
                           Shape: [batch_size, 3, 224, 224]
             requires_grad: Whether to compute gradients (default: True)
             normalize: Whether to normalize embeddings to unit sphere (default: False)
-            
+
         Returns:
             Image embeddings
             Shape: [batch_size, 512]
@@ -58,24 +59,25 @@ class CLIPModel(nn.Module):
                 image_features = self.model.encode_image(image_tensors)
 
         if normalize:
-            image_features = image_features / image_features.norm(dim=1,
-                                                                  keepdim=True)
+            image_features = image_features / image_features.norm(dim=1, keepdim=True)
 
         return image_features
 
-    def encode_text_tokens(self,
-                           text_tokens: torch.Tensor,
-                           requires_grad: bool = True,
-                           normalize: bool = False) -> torch.Tensor:
+    def encode_text_tokens(
+        self,
+        text_tokens: torch.Tensor,
+        requires_grad: bool = True,
+        normalize: bool = False,
+    ) -> torch.Tensor:
         """
         Encode tokenized text to embeddings.
-        
+
         Args:
             text_tokens: Batch of tokenized text tensors
                         Shape: [batch_size, 77] (context_length)
             requires_grad: Whether to compute gradients (default: True)
             normalize: Whether to normalize embeddings to unit sphere (default: False)
-            
+
         Returns:
             Text embeddings
             Shape: [batch_size, 512]
@@ -87,8 +89,7 @@ class CLIPModel(nn.Module):
                 text_features = self.model.encode_text(text_tokens)
 
         if normalize:
-            text_features = text_features / text_features.norm(dim=1,
-                                                               keepdim=True)
+            text_features = text_features / text_features.norm(dim=1, keepdim=True)
         return text_features
 
     def forward(
@@ -98,18 +99,20 @@ class CLIPModel(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor]:
         return self.model.forward(image_tensors, text_tokens)
 
-    def encode_text(self,
-                    texts: Union[str, List[str]],
-                    requires_grad: bool = True,
-                    normalize: bool = False) -> torch.Tensor:
+    def encode_text(
+        self,
+        texts: Union[str, List[str]],
+        requires_grad: bool = True,
+        normalize: bool = False,
+    ) -> torch.Tensor:
         """
         Encode text strings to embeddings.
-        
+
         Args:
             texts: Single text string or list of text strings
             requires_grad: Whether to compute gradients (default: True)
             normalize: Whether to normalize embeddings to unit sphere (default: False)
-            
+
         Returns:
             Text embeddings
             Shape: [batch_size, 512]
@@ -122,22 +125,24 @@ class CLIPModel(nn.Module):
         text_tokens = clip.tokenize(texts, truncate=True)
         text_tokens = text_tokens.to(self.device)
 
-        return self.encode_text_tokens(text_tokens,
-                                       requires_grad=requires_grad,
-                                       normalize=normalize)
+        return self.encode_text_tokens(
+            text_tokens, requires_grad=requires_grad, normalize=normalize
+        )
 
-    def encode_images(self,
-                      image_paths: Union[str, List[str]],
-                      requires_grad: bool = True,
-                      normalize: bool = False) -> torch.Tensor:
+    def encode_images(
+        self,
+        image_paths: Union[str, List[str]],
+        requires_grad: bool = True,
+        normalize: bool = False,
+    ) -> torch.Tensor:
         """
         Encode images from file paths to embeddings.
-        
+
         Args:
             image_paths: Single image path or list of image paths
             requires_grad: Whether to compute gradients (default: True)
             normalize: Whether to normalize embeddings to unit sphere (default: False)
-            
+
         Returns:
             Image embeddings
             Shape: [batch_size, 512]
@@ -151,7 +156,7 @@ class CLIPModel(nn.Module):
         for image_path in image_paths:
             try:
                 # Load image
-                image = Image.open(image_path).convert('RGB')
+                image = Image.open(image_path).convert("RGB")
                 # Use CLIP's preprocessing
                 image_tensor = self.preprocess(image).unsqueeze(0)
                 image_tensors.append(image_tensor)
@@ -163,9 +168,9 @@ class CLIPModel(nn.Module):
         # Concatenate all images
         image_tensors = torch.cat(image_tensors, dim=0).to(self.device)
 
-        return self.encode_image_tensors(image_tensors,
-                                         requires_grad=requires_grad,
-                                         normalize=normalize)
+        return self.encode_image_tensors(
+            image_tensors, requires_grad=requires_grad, normalize=normalize
+        )
 
     def get_embedding_dimension(self) -> int:
         """Get the dimension of CLIP embeddings."""

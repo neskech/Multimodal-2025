@@ -5,9 +5,9 @@ import sys
 import os
 
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..',
-                             'cloob-training'))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "cloob-training"))
 from cloob_training import loss
+
 
 class CLOOBLoss(nn.Module):
 
@@ -17,5 +17,6 @@ class CLOOBLoss(nn.Module):
         self.scale_hopfield = scale_hopfield
 
     def forward(self, image_features, text_features):
-        return loss.cloob_loss(image_features, text_features, self.inv_tau,
-                          self.scale_hopfield)
+        return loss.cloob_loss(
+            image_features, text_features, self.inv_tau, self.scale_hopfield
+        )

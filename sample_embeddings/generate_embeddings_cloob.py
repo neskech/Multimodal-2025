@@ -21,19 +21,22 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Set up logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLOOB_CONFIG = 'cloob_laion_400m_vit_b_16_16_epochs'
+DEFAULT_CLOOB_CONFIG = "cloob_laion_400m_vit_b_16_16_epochs"
 
 
 class EmbeddingGeneratorCLOOB:
     """Generate CLIP embeddings for various datasets."""
 
-    def __init__(self,
-                 config=DEFAULT_CLOOB_CONFIG,
-                 device: Optional[str] = None,):
+    def __init__(
+        self,
+        config=DEFAULT_CLOOB_CONFIG,
+        device: Optional[str] = None,
+    ):
         """
         Initialize the embedding generator.
 
@@ -70,7 +73,7 @@ class EmbeddingGeneratorCLOOB:
         logger.info(f"Generating embeddings for {len(texts)} texts...")
 
         for i in tqdm(range(0, len(texts), batch_size), desc="Processing text batches"):
-            batch_texts = texts[i:i + batch_size]
+            batch_texts = texts[i : i + batch_size]
 
             # TODO: Truncate???
             text_tokens = self.model.tokenizer(batch_texts).to(self.device)
@@ -99,19 +102,21 @@ class EmbeddingGeneratorCLOOB:
 
         logger.info(f"Generating embeddings for {len(image_paths)} images...")
 
-        for i in tqdm(range(0, len(image_paths), batch_size), desc="Processing image batches"):
-            batch_paths = image_paths[i:i + batch_size]
+        for i in tqdm(
+            range(0, len(image_paths), batch_size), desc="Processing image batches"
+        ):
+            batch_paths = image_paths[i : i + batch_size]
             batch_images = []
 
             for img_path in batch_paths:
                 try:
-                    image = Image.open(img_path).convert('RGB')
+                    image = Image.open(img_path).convert("RGB")
                     image_tensor = self.preprocess(image).unsqueeze(0)
                     batch_images.append(image_tensor)
                 except Exception as e:
                     logger.warning(f"Error loading image {img_path}: {e}")
                     # Create a dummy black image as fallback
-                    dummy_image = Image.new('RGB', (224, 224), color='black')
+                    dummy_image = Image.new("RGB", (224, 224), color="black")
                     image_tensor = self.preprocess(dummy_image).unsqueeze(0)
                     batch_images.append(image_tensor)
 
@@ -122,20 +127,21 @@ class EmbeddingGeneratorCLOOB:
                     image_features = self.model.encode_image(batch_tensor)
 
                     # Normalize to unit sphere
-                    image_features = image_features / \
-                        image_features.norm(dim=-1, keepdim=True)
+                    image_features = image_features / image_features.norm(
+                        dim=-1, keepdim=True
+                    )
                     embeddings.append(image_features.cpu().numpy())
 
         return np.vstack(embeddings) if embeddings else np.array([])
 
 
-
-
-def save_embeddings(embeddings: np.ndarray,
-                    labels: List[str],
-                    types: List[str],
-                    metadata: Dict,
-                    cache_file: str):
+def save_embeddings(
+    embeddings: np.ndarray,
+    labels: List[str],
+    types: List[str],
+    metadata: Dict,
+    cache_file: str,
+):
     """
     Save embeddings to cache file.
 
@@ -148,11 +154,9 @@ def save_embeddings(embeddings: np.ndarray,
     """
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
 
-    np.savez(cache_file,
-             embeddings=embeddings,
-             labels=labels,
-             types=types,
-             metadata=metadata)
+    np.savez(
+        cache_file, embeddings=embeddings, labels=labels, types=types, metadata=metadata
+    )
 
     logger.info(f"Saved embeddings to {cache_file}")
 
@@ -182,45 +186,76 @@ def load_embeddings(cache_file: str) -> Tuple[np.ndarray, List[str], List[str], 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate CLOOB embeddings for various datasets")
+        description="Generate CLOOB embeddings for various datasets"
+    )
 
     # Dataset selection
-    parser.add_argument("--dataset", type=str, choices=["coco", "laion_sample", "custom_images", "custom_text"],
-                        default="coco", help="Dataset to use")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["coco", "laion_sample", "custom_images", "custom_text"],
+        default="coco",
+        help="Dataset to use",
+    )
     parser.add_argument("--data_dir", type=str, default="data", help="Data directory")
-    parser.add_argument("--custom_path", type=str,
-                        help="Path to custom images dir or text file")
-    parser.add_argument("--split", type=str, default="train2017", choices=["train2017", "val2017"],
-                        help="COCO dataset split")
-    parser.add_argument("--max_samples", type=int,
-                        help="Maximum number of samples to process")
+    parser.add_argument(
+        "--custom_path", type=str, help="Path to custom images dir or text file"
+    )
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="train2017",
+        choices=["train2017", "val2017"],
+        help="COCO dataset split",
+    )
+    parser.add_argument(
+        "--max_samples", type=int, help="Maximum number of samples to process"
+    )
 
     # Model configuration
-    parser.add_argument("--model_name", type=str,
-                        default="ViT-B/32", help="CLIP model name")
-    parser.add_argument("--pretrained_name", type=str,
-                        help="Pretrained checkpoint name (for OpenCLIP)")
-    parser.add_argument("--use_openclip", action="store_true",
-                        help="Use OpenCLIP instead of original CLIP")
+    parser.add_argument(
+        "--model_name", type=str, default="ViT-B/32", help="CLIP model name"
+    )
+    parser.add_argument(
+        "--pretrained_name", type=str, help="Pretrained checkpoint name (for OpenCLIP)"
+    )
+    parser.add_argument(
+        "--use_openclip",
+        action="store_true",
+        help="Use OpenCLIP instead of original CLIP",
+    )
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
 
     # Output configuration
     parser.add_argument("--cache_file", type=str, help="Output cache file path")
-    parser.add_argument("--force_recompute", action="store_true",
-                        help="Force recompute even if cache exists")
+    parser.add_argument(
+        "--force_recompute",
+        action="store_true",
+        help="Force recompute even if cache exists",
+    )
 
     # Processing options
-    parser.add_argument("--include_images", action="store_true",
-                        default=True, help="Include image embeddings")
-    parser.add_argument("--include_texts", action="store_true",
-                        default=True, help="Include text embeddings")
+    parser.add_argument(
+        "--include_images",
+        action="store_true",
+        default=True,
+        help="Include image embeddings",
+    )
+    parser.add_argument(
+        "--include_texts",
+        action="store_true",
+        default=True,
+        help="Include text embeddings",
+    )
 
     args = parser.parse_args()
 
     # Generate cache file name if not provided
     if not args.cache_file:
         model_name_safe = args.model_name.replace("/", "-")
-        args.cache_file = f"data/clip_embeddings_cache_{args.dataset}_{model_name_safe}.npz"
+        args.cache_file = (
+            f"data/clip_embeddings_cache_{args.dataset}_{model_name_safe}.npz"
+        )
 
     # Check if cache exists and we don't want to force recompute
     if os.path.exists(args.cache_file) and not args.force_recompute:
@@ -234,15 +269,13 @@ def main():
         model_name=args.model_name,
         pretrained_name=args.pretrained_name,
         device=args.device,
-        use_openclip=args.use_openclip
+        use_openclip=args.use_openclip,
     )
 
     # Load dataset
     if args.dataset == "coco":
         data = DatasetLoader.load_coco_dataset(
-            data_dir=args.data_dir,
-            split=args.split,
-            max_samples=args.max_samples
+            data_dir=args.data_dir, split=args.split, max_samples=args.max_samples
         )
     elif args.dataset == "laion_sample":
         data = DatasetLoader.load_laion_sample()
@@ -270,21 +303,33 @@ def main():
     for item in data:
         if args.include_texts and item["text"]:
             texts.append(item["text"])
-            labels.append(str(item.get("image_id", item.get(
-                "text_id", item.get("sample_id", "unknown")))))
+            labels.append(
+                str(
+                    item.get(
+                        "image_id",
+                        item.get("text_id", item.get("sample_id", "unknown")),
+                    )
+                )
+            )
 
         if args.include_images and item["image_path"]:
             image_paths.append(item["image_path"])
             if not args.include_texts:  # Only add labels if not already added for text
-                labels.append(str(item.get("image_id", item.get(
-                    "text_id", item.get("sample_id", "unknown")))))
+                labels.append(
+                    str(
+                        item.get(
+                            "image_id",
+                            item.get("text_id", item.get("sample_id", "unknown")),
+                        )
+                    )
+                )
 
     # Generate text embeddings
     if texts:
         logger.info("Generating text embeddings...")
         text_embeddings = generator.generate_text_embeddings(texts)
         all_embeddings.append(text_embeddings)
-        all_labels.extend(labels[:len(texts)])
+        all_labels.extend(labels[: len(texts)])
         all_types.extend(["text"] * len(texts))
 
     # Generate image embeddings
@@ -294,7 +339,7 @@ def main():
         all_embeddings.append(image_embeddings)
         if args.include_texts:
             # If we already have text labels, we need to adjust
-            all_labels.extend(labels[:len(image_paths)])
+            all_labels.extend(labels[: len(image_paths)])
         else:
             all_labels.extend(labels)
         all_types.extend(["image"] * len(image_paths))
@@ -304,7 +349,8 @@ def main():
         final_embeddings = np.vstack(all_embeddings)
     else:
         raise ValueError(
-            "No embeddings generated. Check your dataset and include options.")
+            "No embeddings generated. Check your dataset and include options."
+        )
 
     # Create metadata
     metadata = {
@@ -315,14 +361,15 @@ def main():
         "n_samples": len(final_embeddings),
         "embedding_dim": final_embeddings.shape[1],
         "include_images": args.include_images,
-        "include_texts": args.include_texts
+        "include_texts": args.include_texts,
     }
 
     # Save embeddings
     save_embeddings(final_embeddings, all_labels, all_types, metadata, args.cache_file)
 
     logger.info(
-        f"Generated {len(final_embeddings)} embeddings with shape {final_embeddings.shape}")
+        f"Generated {len(final_embeddings)} embeddings with shape {final_embeddings.shape}"
+    )
     logger.info(f"Types: {dict(zip(*np.unique(all_types, return_counts=True)))}")
 
     return final_embeddings, all_labels, all_types, metadata
