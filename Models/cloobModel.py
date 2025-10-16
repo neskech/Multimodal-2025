@@ -15,6 +15,7 @@ from typing import List, Union
 # Add cloob-training to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..',
                              'cloob-training'))
+from Datasets.preProcess import clip_preprocessor
 from cloob_training import model_pt, pretrained
 
 
@@ -54,6 +55,7 @@ class CLOOBModel(nn.Module):
         checkpoint = pretrained.download_checkpoint(config)
         self.model.load_state_dict(model_pt.get_pt_params(config, checkpoint))
         self.model.to(self.device)
+        self.preprocess = clip_preprocessor()
         
     def encode_image_tensors(self,
                              image_tensors: torch.Tensor,

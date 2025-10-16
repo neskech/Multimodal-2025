@@ -12,7 +12,6 @@ from typing import List, Union
 # Global constant for model configuration
 MODEL_NAME = "ViT-B/32"
 
-
 class CLIPModel(nn.Module):
     """
     CLIP embedding extractor as a PyTorch module.

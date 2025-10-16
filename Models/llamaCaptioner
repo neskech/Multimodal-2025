@@ -1,0 +1,114 @@
+import torch
+import torch.nn as nn
+from transformers import AutoProcessor, AutoModel, AutoTokenizer, AutoModelForCausalLM
+from PIL import Image
+import requests
+from nltk.translate.bleu_score import sentence_bleu
+
+class LlamaCaptioner:
+    """
+    A class to generate image captions using a Llama model from CLIP image embeddings
+    and evaluate them using the BLEU score.
+    """
+    def __init__(self, llama_model_name="meta-llama/Meta-Llama-3-8B", clip_embedding_dim=512):
+        """
+        Initializes the LlamaCaptioner by loading the necessary models and setting up a projection layer.
+
+        Args:
+            llama_model_name (str): The name of the Llama model to load from Hugging Face.
+            clip_model_name (str): The name of the CLIP model to load from Hugging Face.
+        """
+        print("Initializing models... This may take a moment.")
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # Load Llama 3 model and tokenizer
+        # Note: Access to Llama 3 requires authentication. Make sure you are logged in via `huggingface-cli login`.
+        try:
+            self.llama_tokenizer = AutoTokenizer.from_pretrained(llama_model_name)
+            self.llama_model = AutoModelForCausalLM.from_pretrained(
+                llama_model_name,
+                torch_dtype=torch.float16, # Use float16 for memory efficiency
+                device_map="auto"
+            )
+        except Exception as e:
+            print(f"Error loading Llama model: {e}")
+            print("Please ensure you have requested access to the Llama 3 model on Hugging Face and are logged in.")
+            raise
+
+        if self.llama_tokenizer.pad_token is None:
+            self.llama_tokenizer.pad_token = self.llama_tokenizer.eos_token
+
+        # Set up the projection layer
+        llama_embedding_dim = self.llama_model.config.hidden_size
+        self.projection = nn.Linear(clip_embedding_dim, llama_embedding_dim).to(self.device)
+        print("Models initialized successfully.")
+
+    def get_image_embedding(self, image_source):
+        """
+        Generates a CLIP embedding for a given image.
+
+        Args:
+            image_source (str or PIL.Image.Image): The URL of the image or a PIL Image object.
+
+        Returns:
+            torch.Tensor: The CLIP image embedding.
+        """
+        if isinstance(image_source, str):
+            try:
+                image = Image.open(requests.get(image_source, stream=True).raw)
+            except Exception as e:
+                print(f"Could not load image from URL: {e}")
+                return None
+        else:
+            image = image_source
+        
+        inputs = self.clip_processor(images=image, return_tensors="pt").to(self.device)
+        
+        with torch.no_grad():
+            image_features = self.clip_model.get_image_features(**inputs)
+        
+        return image_features
+
+    def generate_caption(self, image_embedding, prompt="Describe what you see in the image.", max_length=60):
+        """
+        Generates a caption for an image using its embedding.
+
+        Args:
+            image_embedding (torch.Tensor): The CLIP embedding of the image.
+            prompt (str): The text prompt to guide the caption generation.
+            max_length (int): The maximum length of the generated caption.
+
+        Returns:
+            str: The generated caption.
+        """
+        if image_embedding is None:
+            return "Could not process image embedding."
+
+        # Project the image embedding to the Llama model's embedding space
+        projected_embedding = self.projection(image_embedding.to(torch.float32)).to(self.llama_model.dtype)
+
+        # Prepare the text prompt
+        prompt_tokens = self.llama_tokenizer(prompt, return_tensors="pt").to(self.llama_model.device)
+        prompt_embeddings = self.llama_model.get_input_embeddings()(prompt_tokens.input_ids)
+
+        # Combine image and text embeddings
+        # The image embedding acts as a prefix to the text prompt
+        combined_embeddings = torch.cat((projected_embedding.unsqueeze(0), prompt_embeddings), dim=1)
+
+        # Generate the caption
+        with torch.no_grad():
+            output_tokens = self.llama_model.generate(
+                inputs_embeds=combined_embeddings,
+                max_length=max_length,
+                pad_token_id=self.llama_tokenizer.pad_token_id,
+                eos_token_id=self.llama_tokenizer.eos_token_id
+            )
+
+        # Decode the generated tokens into text
+        # We skip the prompt part of the output
+        prompt_len = prompt_tokens.input_ids.shape[1]
+        # Adding 1 to account for the image embedding prefix
+        generated_part = output_tokens[:, prompt_len + 1:] 
+        generated_caption = self.llama_tokenizer.decode(generated_part[0], skip_special_tokens=True)
+        
+        return generated_caption.strip()
