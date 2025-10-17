@@ -8,12 +8,14 @@ from torch import nn
 from PIL import Image
 from typing import List, Union
 
+from models.clip import ClipModel
+
 
 # Global constant for model configuration
 MODEL_NAME = "ViT-B/32"
 
 
-class CLIPModel(nn.Module):
+class CLIPModel(ClipModel):
     """
     CLIP embedding extractor as a PyTorch module.
     Hard-coded to use ViT-B/32 architecture.

@@ -12,6 +12,8 @@ import clip
 from PIL import Image
 from typing import List, Union
 
+from models.clip import ClipModel
+
 # Add cloob-training to path
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "cloob-training"))
 from cloob_training import model_pt, pretrained
@@ -21,7 +23,7 @@ from cloob_training import model_pt, pretrained
 MODEL_NAME = "cloob_laion_400m_vit_b_16_32_epochs"
 
 
-class CLOOBModel(nn.Module):
+class CLOOBModel(ClipModel):
     """
     CLOOB embedding extractor as a PyTorch module.
     Hard-coded to use ViT-B/16 architecture.
