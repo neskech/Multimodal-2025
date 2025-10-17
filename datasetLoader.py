@@ -5,8 +5,9 @@ import logging
 
 
 # Set up logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -14,9 +15,11 @@ class DatasetLoader:
     """Load different types of datasets."""
 
     @staticmethod
-    def load_coco_dataset(data_dir: str = "data",
-                          split: str = "train2017",
-                          max_samples: Optional[int] = None) -> List[Dict]:
+    def load_coco_dataset(
+        data_dir: str = "data",
+        split: str = "train2017",
+        max_samples: Optional[int] = None,
+    ) -> List[Dict]:
         """
         Load COCO dataset.
 
@@ -30,7 +33,9 @@ class DatasetLoader:
         """
         coco_dir = os.path.join(data_dir, "coco")
         images_dir = os.path.join(coco_dir, "images", split)
-        annotations_file = os.path.join(coco_dir, "annotations", f"captions_{split}.json")
+        annotations_file = os.path.join(
+            coco_dir, "annotations", f"captions_{split}.json"
+        )
 
         if not os.path.exists(annotations_file):
             raise FileNotFoundError(f"COCO annotations not found: {annotations_file}")
@@ -53,23 +58,25 @@ class DatasetLoader:
                 img_path = os.path.join(images_dir, img_file)
 
                 if os.path.exists(img_path):
-                    data.append({
-                        "image_path": img_path,
-                        "text": caption,
-                        "image_id": image_id,
-                        "dataset": "coco"
-                    })
+                    data.append(
+                        {
+                            "image_path": img_path,
+                            "text": caption,
+                            "image_id": image_id,
+                            "dataset": "coco",
+                        }
+                    )
 
                     if max_samples and len(data) >= max_samples:
                         break
 
         logger.info(f"Loaded {len(data)} COCO samples")
         return data
-    
+
     @staticmethod
-    def load_cood_dataset(data_dir: str = "data",
-                          split: str = "train",
-                          max_samples: Optional[int] = None) -> List[Dict]:
+    def load_cood_dataset(
+        data_dir: str = "data", split: str = "train", max_samples: Optional[int] = None
+    ) -> List[Dict]:
         """
         Load COOD dataset.
 
@@ -110,23 +117,27 @@ class DatasetLoader:
             "A child playing with colorful building blocks",
             "A garden full of blooming roses and butterflies",
             "A train crossing a bridge over a river",
-            "A cozy coffee shop with customers reading books"
+            "A cozy coffee shop with customers reading books",
         ]
 
         data = []
         for i, text in enumerate(texts):
-            data.append({
-                "text": text,
-                "image_path": None,
-                "sample_id": i,
-                "dataset": "laion_sample"
-            })
+            data.append(
+                {
+                    "text": text,
+                    "image_path": None,
+                    "sample_id": i,
+                    "dataset": "laion_sample",
+                }
+            )
 
         logger.info(f"Loaded {len(data)} LAION sample texts")
         return data
 
     @staticmethod
-    def load_custom_images(image_dir: str, max_samples: Optional[int] = None) -> List[Dict]:
+    def load_custom_images(
+        image_dir: str, max_samples: Optional[int] = None
+    ) -> List[Dict]:
         """
         Load custom images from a directory.
 
@@ -140,7 +151,7 @@ class DatasetLoader:
         if not os.path.exists(image_dir):
             raise FileNotFoundError(f"Image directory not found: {image_dir}")
 
-        valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+        valid_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
         image_paths = []
 
         for root, dirs, files in os.walk(image_dir):
@@ -157,12 +168,14 @@ class DatasetLoader:
         for i, img_path in enumerate(image_paths):
             # Use filename (without extension) as label
             label = os.path.splitext(os.path.basename(img_path))[0]
-            data.append({
-                "image_path": img_path,
-                "text": label.replace("_", " "),  # Simple text from filename
-                "image_id": i,
-                "dataset": "custom_images"
-            })
+            data.append(
+                {
+                    "image_path": img_path,
+                    "text": label.replace("_", " "),  # Simple text from filename
+                    "image_id": i,
+                    "dataset": "custom_images",
+                }
+            )
 
         logger.info(f"Loaded {len(data)} custom images")
         return data
@@ -182,7 +195,7 @@ class DatasetLoader:
         if not os.path.exists(text_file):
             raise FileNotFoundError(f"Text file not found: {text_file}")
 
-        with open(text_file, 'r', encoding='utf-8') as f:
+        with open(text_file, "r", encoding="utf-8") as f:
             texts = [line.strip() for line in f if line.strip()]
 
         if max_samples:
@@ -190,12 +203,14 @@ class DatasetLoader:
 
         data = []
         for i, text in enumerate(texts):
-            data.append({
-                "text": text,
-                "image_path": None,
-                "text_id": i,
-                "dataset": "custom_text"
-            })
+            data.append(
+                {
+                    "text": text,
+                    "image_path": None,
+                    "text_id": i,
+                    "dataset": "custom_text",
+                }
+            )
 
         logger.info(f"Loaded {len(data)} texts")
         return data

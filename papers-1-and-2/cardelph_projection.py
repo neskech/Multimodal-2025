@@ -1,7 +1,7 @@
 import json
 import os
 import torch
-import open_clip # Using open_clip for LAION models
+import open_clip  # Using open_clip for LAION models
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -14,11 +14,11 @@ from sklearn.decomposition import PCA
 
 # --- Configuration ---
 USE_COCO = True
-USE_LAION = False # New flag to visualize LAION sample
+USE_LAION = False  # New flag to visualize LAION sample
 model_name = "ViT-L-14"
-pretrained_name = "laion2b_s32b_b82k" # The specific checkpoint from Hugging Face
-DEBUG = False # Set to True to visualize a few samples
-method = "pca-norm" # "pca" or "umap" or "pca-norm" or "pca-r2"
+pretrained_name = "laion2b_s32b_b82k"  # The specific checkpoint from Hugging Face
+DEBUG = False  # Set to True to visualize a few samples
+method = "pca-norm"  # "pca" or "umap" or "pca-norm" or "pca-r2"
 
 if USE_LAION:
     # We only visualize text embeddings for the LAION sample
@@ -32,9 +32,7 @@ else:
 # Load OpenCLIP model and tokenizer
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model, _, preprocess = open_clip.create_model_and_transforms(
-    model_name,
-    pretrained=pretrained_name,
-    device=device
+    model_name, pretrained=pretrained_name, device=device
 )
 tokenizer = open_clip.get_tokenizer(model_name)
 
@@ -54,12 +52,14 @@ if USE_LAION:
         "A dog wearing sunglasses and a funny hat",
     ]
     for i, text in enumerate(texts):
-        data.append({
-            "image": None, # No images to load for this sample
-            "text": text,
-            "label": f"laion_sample_{i}"
-        })
-    DATASET_DIR = None # Not used for this option
+        data.append(
+            {
+                "image": None,  # No images to load for this sample
+                "text": text,
+                "label": f"laion_sample_{i}",
+            }
+        )
+    DATASET_DIR = None  # Not used for this option
 elif USE_COCO:
     DATASET_DIR = "coco/images/train2017"
     ANNO_FILE = "coco/annotations/captions_train2017.json"
@@ -73,11 +73,9 @@ elif USE_COCO:
         if image_id in image_id_to_file:
             img_file = image_id_to_file[image_id]
             if os.path.exists(os.path.join(DATASET_DIR, img_file)):
-                data.append({
-                    "image": img_file,
-                    "text": caption,
-                    "label": str(image_id)
-                })
+                data.append(
+                    {"image": img_file, "text": caption, "label": str(image_id)}
+                )
     # display a few image caption pairs using matplotlib
     if DEBUG == True:
         for item in data[:5]:
@@ -94,12 +92,14 @@ else:
         label_dir = os.path.join(DATASET_DIR, label)
         if os.path.isdir(label_dir):
             for img_file in os.listdir(label_dir):
-                if img_file.endswith(('.png', '.jpg', '.jpeg')):
-                    data.append({
-                        "image": os.path.join(label, img_file),
-                        "text": label.replace("_", " "),
-                        "label": label
-                    })
+                if img_file.endswith((".png", ".jpg", ".jpeg")):
+                    data.append(
+                        {
+                            "image": os.path.join(label, img_file),
+                            "text": label.replace("_", " "),
+                            "label": label,
+                        }
+                    )
 
 df = pd.DataFrame(data)
 
@@ -121,7 +121,11 @@ else:
 
         # Only compute image embeddings if an image path exists
         if img_path:
-            image = preprocess(Image.open(os.path.join(DATASET_DIR, img_path))).unsqueeze(0).to(device)
+            image = (
+                preprocess(Image.open(os.path.join(DATASET_DIR, img_path)))
+                .unsqueeze(0)
+                .to(device)
+            )
             with torch.no_grad():
                 img_emb = model.encode_image(image).cpu().numpy().squeeze()
             image_embeddings.append(img_emb)
@@ -134,10 +138,10 @@ else:
         labels.append(label)
 
     embeddings = np.array(image_embeddings + text_embeddings)
-    
+
     # Adjust labels and types based on what was computed
     if image_embeddings:
-        labels = labels[:len(image_embeddings)] + labels
+        labels = labels[: len(image_embeddings)] + labels
         types = ["image"] * len(image_embeddings) + ["text"] * len(text_embeddings)
     else:
         # For the LAION sample, there are only text embeddings
@@ -163,7 +167,16 @@ if method == "pca":
     for i, (emb, lab, typ) in enumerate(zip(coords_3d, labels, types)):
         color = label_to_color[lab]
         marker = "o" if typ == "image" else "^"
-        ax.scatter(emb[0], emb[1], emb[2], color=color, marker=marker, s=40, alpha=0.8, label=f"{lab} ({typ})")
+        ax.scatter(
+            emb[0],
+            emb[1],
+            emb[2],
+            color=color,
+            marker=marker,
+            s=40,
+            alpha=0.8,
+            label=f"{lab} ({typ})",
+        )
 
     # Draw lines between image-text pairs, only for datasets that have them
     if "image" in types and "text" in types:
@@ -171,11 +184,15 @@ if method == "pca":
         for i in range(n):
             img_coord = coords_3d[i]
             text_coord = coords_3d[i + n]
-            ax.plot([img_coord[0], text_coord[0]],
-                    [img_coord[1], text_coord[1]],
-                    [img_coord[2], text_coord[2]],
-                    color='gray', alpha=0.3, linewidth=0.7)
-            
+            ax.plot(
+                [img_coord[0], text_coord[0]],
+                [img_coord[1], text_coord[1]],
+                [img_coord[2], text_coord[2]],
+                color="gray",
+                alpha=0.3,
+                linewidth=0.7,
+            )
+
     ax.set_title(f"CLIP ({model_name}) Embeddings in 3D using PCA")
     ax.set_xlabel("PCA 1")
     ax.set_ylabel("PCA 2")
@@ -206,7 +223,16 @@ elif method == "pca-norm":
     for i, (emb, lab, typ) in enumerate(zip(coords_3d, labels, types)):
         color = label_to_color[lab]
         marker = "o" if typ == "image" else "^"
-        ax.scatter(emb[0], emb[1], emb[2], color=color, marker=marker, s=40, alpha=0.8, label=f"{lab} ({typ})")
+        ax.scatter(
+            emb[0],
+            emb[1],
+            emb[2],
+            color=color,
+            marker=marker,
+            s=40,
+            alpha=0.8,
+            label=f"{lab} ({typ})",
+        )
 
     # Draw lines between image-text pairs, only for datasets that have them
     if "image" in types and "text" in types:
@@ -214,11 +240,15 @@ elif method == "pca-norm":
         for i in range(n):
             img_coord = coords_3d[i]
             text_coord = coords_3d[i + n]
-            ax.plot([img_coord[0], text_coord[0]],
-                    [img_coord[1], text_coord[1]],
-                    [img_coord[2], text_coord[2]],
-                    color='gray', alpha=0.3, linewidth=0.7)
-            
+            ax.plot(
+                [img_coord[0], text_coord[0]],
+                [img_coord[1], text_coord[1]],
+                [img_coord[2], text_coord[2]],
+                color="gray",
+                alpha=0.3,
+                linewidth=0.7,
+            )
+
     ax.set_title(f"CLIP ({model_name}) Embeddings in 3D using PCA")
     ax.set_xlabel("PCA 1")
     ax.set_ylabel("PCA 2")
@@ -233,7 +263,6 @@ elif method == "pca-2d":
     embeddings = embeddings / norms
     reducer = PCA(n_components=2)
     coords_2d = reducer.fit_transform(embeddings)
-    
 
     unique_labels = sorted(set(labels))
     cmap = get_cmap("tab20", len(unique_labels))
@@ -241,7 +270,13 @@ elif method == "pca-2d":
 
     # --- 2D Plot ---
     fig, ax = plt.subplots(figsize=(10, 8))
-    scatter = ax.scatter(coords_2d[:, 0], coords_2d[:, 1], c=[label_to_color[lab] for lab in labels], s=40, alpha=0.8)
+    scatter = ax.scatter(
+        coords_2d[:, 0],
+        coords_2d[:, 1],
+        c=[label_to_color[lab] for lab in labels],
+        s=40,
+        alpha=0.8,
+    )
 
     # Draw lines between image-text pairs, only for datasets that have them
     if "image" in types and "text" in types:
@@ -249,9 +284,13 @@ elif method == "pca-2d":
         for i in range(n):
             img_coord = coords_2d[i]
             text_coord = coords_2d[i + n]
-            ax.plot([img_coord[0], text_coord[0]],
-                    [img_coord[1], text_coord[1]],
-                    color='gray', alpha=0.3, linewidth=0.7)
+            ax.plot(
+                [img_coord[0], text_coord[0]],
+                [img_coord[1], text_coord[1]],
+                color="gray",
+                alpha=0.3,
+                linewidth=0.7,
+            )
 
     ax.set_title(f"CLIP ({model_name}) Embeddings in 2D using PCA")
     ax.set_xlabel("PCA 1")
@@ -279,18 +318,31 @@ elif method == "umap":
     for i, (emb, lab, typ) in enumerate(zip(coords_3d, labels, types)):
         color = label_to_color[lab]
         marker = "o" if typ == "image" else "^"
-        ax.scatter(emb[0], emb[1], emb[2], color=color, marker=marker, s=40, alpha=0.8, label=f"{lab} ({typ})")
-        
+        ax.scatter(
+            emb[0],
+            emb[1],
+            emb[2],
+            color=color,
+            marker=marker,
+            s=40,
+            alpha=0.8,
+            label=f"{lab} ({typ})",
+        )
+
     # Draw lines between image-text pairs, only for datasets that have them
     if "image" in types and "text" in types:
         n = len(embeddings) // 2
         for i in range(n):
             img_coord = coords_3d[i]
             text_coord = coords_3d[i + n]
-            ax.plot([img_coord[0], text_coord[0]],
-                    [img_coord[1], text_coord[1]],
-                    [img_coord[2], text_coord[2]],
-                    color='gray', alpha=0.3, linewidth=0.7)
+            ax.plot(
+                [img_coord[0], text_coord[0]],
+                [img_coord[1], text_coord[1]],
+                [img_coord[2], text_coord[2]],
+                color="gray",
+                alpha=0.3,
+                linewidth=0.7,
+            )
 
     ax.set_title(f"CLIP ({model_name}) Embeddings in 3D using UMAP")
     ax.set_xlabel("UMAP 1")
