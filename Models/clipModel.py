@@ -21,7 +21,7 @@ class CLIPModel(ClipModel):
     Hard-coded to use ViT-B/32 architecture.
     """
 
-    def __init__(self, device: str = None):
+    def __init__(self, device: str = None, model_name: str = MODEL_NAME):
         """
         Initialize CLIP model.
 
@@ -30,10 +30,10 @@ class CLIPModel(ClipModel):
         """
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.model_name = MODEL_NAME
+        self.model_name = model_name
 
         # Load CLIP model
-        self.model, self.preprocess = clip.load(MODEL_NAME, device=self.device)
+        self.model, self.preprocess = clip.load(self.model_name, device=self.device)
 
     def encode_image_tensors(
         self,

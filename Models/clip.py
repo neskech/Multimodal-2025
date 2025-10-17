@@ -47,4 +47,11 @@ class ClipModel(nn.Module):
         """
         ...
 
-    ...
+    def get_embedding_dimension(self) -> int:
+        """
+        Get the dimensionality of the embeddings produced by the model.
+
+        Returns:
+            Embedding dimension (int)
+        """
+        ...
