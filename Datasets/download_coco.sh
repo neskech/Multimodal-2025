@@ -1,3 +1,5 @@
+mkdir Data
+cd Data
 mkdir coco
 cd coco
 mkdir images
