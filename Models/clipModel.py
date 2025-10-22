@@ -2,26 +2,25 @@
 CLIP embedding extraction functionality for von Mises-Fisher mixture modeling.
 """
 
+from typing_extensions import Self
 import torch
 import clip
-from torch import nn
 from PIL import Image
-from typing import List, Union
-
-from models.clip import ClipModel
+from typing import List, Union, override
+from clipInterface import ClipInterface
 
 
 # Global constant for model configuration
 MODEL_NAME = "ViT-B/32"
 
 
-class CLIPModel(ClipModel):
+class CLIPModel(ClipInterface):
     """
     CLIP embedding extractor as a PyTorch module.
     Hard-coded to use ViT-B/32 architecture.
     """
 
-    def __init__(self, device: str = None, model_name: str = MODEL_NAME):
+    def __init__(self, device: str | None = None, model_name: str = MODEL_NAME):
         """
         Initialize CLIP model.
 

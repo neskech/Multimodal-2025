@@ -1,12 +1,12 @@
 # This defines a CLIP-like interface for models to ascribe to, but does not actually implement CLIP itself.
 # This is used for standardizing the interface for clip variants in testing.
 
-from typing import List, List, Union
+from typing import List, Union
 import torch
 import torch.nn as nn
 
 
-class ClipModel(nn.Module):
+class ClipInterface(nn.Module):
     def encode_text(
         self,
         texts: Union[str, List[str]],
