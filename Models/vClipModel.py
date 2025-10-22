@@ -8,7 +8,7 @@ from torch import nn
 from PIL import Image
 from typing import List, Union
 
-from Models.clipModel import ClipInterface
+from Models.clipInterface import ClipInterface
 
 
 # Global constant for model configuration

@@ -10,7 +10,7 @@ import urllib.request
 import clip
 from PIL import Image
 from typing import List, Union
-from clipInterface import ClipInterface
+from Models.clipInterface import ClipInterface
 
 # Add cloob-training to path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..',

@@ -24,6 +24,7 @@ dependencies = [
     "tqdm>=4.67.1",
     "transformers>=4.57.1",
     "umap-learn>=0.5.9.post2",
+    "wandb>=0.22.2",
 ]
 
 [tool.uv.sources]
