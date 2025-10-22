@@ -16,10 +16,14 @@ class ClipLoss(nn.Module):
     Computes contrastive loss between image and text features.
     """
 
-    def __init__(self):
+    def __init__(self, temperature: float = 0.07, label_smoothing: float = 0.1):
         super().__init__()
+        self.temperature = temperature
+        self.label_smoothing = label_smoothing
+        self.register_buffer("t", torch.tensor(self.temperature))
+        self.register_buffer("smoothing", torch.tensor(self.label_smoothing))
 
-    def forward(self, image_features, text_features, logit_scale):
+    def forward(self, image_features: torch.Tensor, text_features: torch.Tensor):
         """
         Compute CLIP contrastive loss.
 
@@ -31,22 +35,31 @@ class ClipLoss(nn.Module):
         Returns:
             Contrastive loss value
         """
-        # Normalize features
-        image_features = F.normalize(image_features, dim=-1)
-        text_features = F.normalize(text_features, dim=-1)
+       # Normalize features
+        image_features = torch.nn.functional.normalize(image_features, dim=-1, p=2)
+        text_features = torch.nn.functional.normalize(text_features, dim=-1, p=2)
 
-        # Compute similarity matrix
-        logits = image_features @ text_features.T
-        logits = torch.exp(logit_scale) * logits
+        # Clamp to avoid numerical issues
+        image_features = torch.clamp(image_features, -1.0, 1.0)
+        text_features = torch.clamp(text_features, -1.0, 1.0)
 
-        # Create labels (diagonal should be positive pairs)
         batch_size = image_features.shape[0]
+
+        # Compute similarity matrices
+        logits_per_image = image_features @ text_features.T / self.temperature
+        logits_per_text = text_features @ image_features.T / self.temperature
+
+        # Clamp logits to avoid overflow in exp
+        logits_per_image = torch.clamp(logits_per_image, -20, 20)
+        logits_per_text = torch.clamp(logits_per_text, -20, 20)
+
+        # Create labels (diagonal elements are positive pairs)
         labels = torch.arange(batch_size, device=image_features.device)
 
-        # Compute contrastive loss
-        loss = (
-            F.cross_entropy(logits, labels, axis=0)
-            + F.cross_entropy(logits, labels, axis=1)
-        ) / 2
+        # Use stable cross entropy with label smoothing
+        loss_img = torch.nn.functional.cross_entropy(logits_per_image, labels, label_smoothing=self.label_smoothing)
+        loss_txt = torch.nn.functional.cross_entropy(logits_per_text, labels, label_smoothing=self.label_smoothing)
+
+        loss = (loss_img + loss_txt) / 2
 
         return loss

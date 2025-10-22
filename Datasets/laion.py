@@ -70,7 +70,7 @@ class LaionDataset(torch.utils.data.Dataset):
             caption = item["caption"]
 
             if self.tokenize:
-                caption = clip.tokenize(caption, truncate=True)[0]
+                caption = clip.tokenize(caption, truncate=True)
 
             yield processed_image, caption
 
@@ -84,5 +84,5 @@ class LaionDataset(torch.utils.data.Dataset):
     def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None]]):
         # Text must be tokenized already
         images = torch.stack([img for img, _ in batch if img is not None])
-        captions = torch.stack([caption for _, caption in batch if caption is not None])
+        captions = torch.cat([caption for _, caption in batch if caption is not None])
         return images, captions

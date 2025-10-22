@@ -5,3 +5,6 @@ Data/*
 .env
 Datasets/*.pyc
 *.pyc
+**/wandb/
+Notebooks/wandb/
+**/__pycache__/

@@ -26,6 +26,7 @@ dependencies = [
     "umap-learn>=0.5.9.post2",
     "wandb>=0.22.2",
     "jax>=0.8.0",
+    "peft>=0.17.1",
 ]
 
 [tool.uv.sources]
