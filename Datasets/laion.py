@@ -70,7 +70,7 @@ class LaionDataset(torch.utils.data.Dataset):
             caption = item["caption"]
 
             if self.tokenize:
-                caption = clip.tokenize(caption, truncate=True)
+                caption = clip.tokenize(caption, truncate=True)[0]
 
             yield processed_image, caption
 
@@ -78,4 +78,11 @@ class LaionDataset(torch.utils.data.Dataset):
             # If an image fails to download or process, log the error and skip it.
             logger.warning(
                 f"Skipping item. Could not load image from URL {item.get('url', 'N/A')}. Reason: {e}")
-            return torch.nan, torch.nan
+            return None, None
+        
+    @staticmethod
+    def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None]]):
+        # Text must be tokenized already
+        images = torch.stack([img for img, _ in batch if img is not None])
+        captions = torch.stack([caption for _, caption in batch if caption is not None])
+        return images, captions

@@ -1,0 +1,37 @@
+{
+  "os":  "macOS-13.3.1-arm64-arm-64bit-Mach-O",
+  "python":  "CPython 3.13.5",
+  "startedAt":  "2025-10-22T21:39:12.763228Z",
+  "program":  "/Users/ness/Projects/School/Senior/temp/Multimodal-2025/Notebooks/finetune.ipynb",
+  "codePath":  "Notebooks/finetune.ipynb",
+  "codePathLocal":  "finetune.ipynb",
+  "git":  {
+    "remote":  "https://github.com/neskech/Multimodal-2025.git",
+    "commit":  "5a345e82965a299fa42427d9578d35fb2aeedbe7"
+  },
+  "email":  "cmellor@andrew.cmu.edu",
+  "root":  "/Users/ness/Projects/School/Senior/temp/Multimodal-2025/Notebooks",
+  "host":  "Craigs-MBP",
+  "executable":  "/Users/ness/Projects/School/Senior/temp/Multimodal-2025/.venv/bin/python",
+  "cpu_count":  8,
+  "cpu_count_logical":  8,
+  "disk":  {
+    "/":  {
+      "total":  "494384795648",
+      "used":  "481738240000"
+    }
+  },
+  "memory":  {
+    "total":  "17179869184"
+  },
+  "apple":  {
+    "name":  "Apple M1 Pro",
+    "ecpuCores":  2,
+    "pcpuCores":  6,
+    "gpuCores":  14,
+    "memoryGb":  16,
+    "swapTotalBytes":  "16106127360",
+    "ramTotalBytes":  "17179869184"
+  },
+  "writerId":  "bnjqk688quj0bkgvrawpedq8d66qwlyi"
+}

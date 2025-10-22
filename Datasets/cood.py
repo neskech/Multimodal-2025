@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class CoodDataset(torch.utils.data.Dataset):
     def __init__(self, data_dir: str = "Data", tokenize: bool = True, max_samples: int | None = None):
-        self.data_dir = os.path.join(data_dir, 'cood')
+        self.data_dir = os.path.join(data_dir, 'cood', 'ImageNet-AO-filtered')
         self.tokenize = tokenize
         self.preprocess = clip_preprocessor()
 
@@ -47,28 +47,22 @@ class CoodDataset(torch.utils.data.Dataset):
         imageTensor = self.preprocess(image)
 
         if self.tokenize:
-            caption = clip.tokenize(caption, truncate=True)
+            caption = clip.tokenize(caption, truncate=True)[0]
 
-        return {
-            "image": imageTensor,
-            "caption": caption
-        }
+        return imageTensor, caption
 
     @staticmethod
-    def collate_function(batch: list[dict]):
+    def collate_function(batch: list[tuple[torch.Tensor, torch.Tensor]]):
         # Text must be tokenized already
-        images = torch.stack([item["image"] for item in batch])
-        captions = torch.cat([item["caption"] for item in batch])
-        return {
-            "images": images,
-            "captions": captions
-        }
+        images = torch.stack([img for img, _ in batch])
+        captions = torch.stack([caption for _, caption in batch])
+        return images, captions
 
     @staticmethod
     def download(data_dir: str = "Data"):
         cood_path = os.path.join(data_dir, "cood")
         if not os.path.exists(cood_path):
-            _download_cood()
+            _download_cood( data_dir)
         else:
             logger.info("COOD dataset already exists. Skipping download.")
 

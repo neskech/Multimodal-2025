@@ -49,27 +49,22 @@ class CC12mDataset(torch.utils.data.Dataset):
             caption = self.data[index]["caption"]
 
             if self.tokenize:
-                caption = clip.tokenize(caption, truncate=True)
+                caption = clip.tokenize(caption, truncate=True)[0]
 
-            return {"image": processed_image, "caption": caption}
+            return processed_image, caption
 
         except (requests.RequestException, IOError, TypeError, ValueError) as e:
             # If an image fails to download or process, log the error and skip it.
             logger.warning(
                 f"Skipping item. Could not load image from URL {self.data[index]["url"]}. Reason: {e}")
-            return {"image": None, "caption": None}
+            return None, None
 
     @staticmethod
-    def collate_function(batch: list[dict]):
+    def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None]]):
         # Text must be tokenized already
-        images = torch.stack([item["image"]
-                             for item in batch if item["image"] is not None])
-        captions = torch.cat([item["caption"]
-                             for item in batch if item["caption"] is not None])
-        return {
-            "images": images,
-            "captions": captions
-        }
+        images = torch.stack([img for img, _ in batch if img is not None])
+        captions = torch.stack([caption for _, caption in batch if caption is not None])
+        return images, captions
 
     @staticmethod
     def download(data_dir: str = "Data"):
