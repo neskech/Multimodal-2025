@@ -10,10 +10,7 @@ from torch.nn import functional as nnf
 from torch.utils.data import Dataset, DataLoader
 from enum import Enum
 from transformers import (
-    GPT2Tokenizer,
     GPT2LMHeadModel,
-    AdamW,
-    get_linear_schedule_with_warmup,
 )
 from tqdm import tqdm
 import os
@@ -244,7 +241,7 @@ class ClipCaptionModel(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
-        prefix: torch.Tensor,
+        prefix: torch.Tensor,  # Weird name but I think this is the CLIP embedding
         mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
     ):
