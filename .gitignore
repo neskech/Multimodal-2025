@@ -3,3 +3,5 @@ data/*
 coco/
 Data/*
 .env
+Datasets/*.pyc
+*.pyc
