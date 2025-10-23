@@ -8,6 +8,8 @@ from torch import nn
 from PIL import Image
 from typing import List, Union
 
+from Models.clipInterface import ClipInterface
+
 
 # Global constant for model configuration
 MODEL_NAME = "ViT-B/32"
@@ -15,14 +17,14 @@ CLIP_EMBEDDING_DIM = 512
 
 
 
-class VariationalCLIPModel(nn.Module):
+class VariationalCLIPModel(ClipInterface):
     """
     Variational CLIP model that outputs von Mises-Fisher distribution parameters.
     Hard-coded to use ViT-B/32 architecture.
     Modified to output mean direction (512D) and concentration parameter (1D).
     """
 
-    def __init__(self, device: str = None):
+    def __init__(self, device: str | None = None):
         """
         Initialize CLIP model.
         

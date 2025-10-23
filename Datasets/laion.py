@@ -5,7 +5,7 @@ import logging
 from PIL import Image
 from io import BytesIO
 from datasets import load_dataset
-from torch.utils.data import IterableDataset
+import torch
 import dotenv
 from Datasets.preProcess import clip_preprocessor
 
@@ -17,9 +17,9 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 
-class StreamingLaionDataset(IterableDataset):
+class LaionDataset(torch.utils.data.Dataset):
     """
-    A PyTorch IterableDataset for streaming the LAION dataset from Hugging Face Hub.
+    A PyTorch dataset for streaming the LAION dataset from Hugging Face Hub.
 
     This dataset streams data sample by sample, downloading images on-the-fly.
     It does not require downloading the entire dataset beforehand.
@@ -35,40 +35,54 @@ class StreamingLaionDataset(IterableDataset):
             streaming=True,
             token=os.environ.get("HUGGING_FACE_TOKEN"),
         )
-        self.length = max_samples if max_samples is not None else len(
-            self.dataset)
+
+        # Load all paths at the start. This could lead to out of memory,
+        # but we shouldn't even be loading that many datapoints in the first place
+        self.data = []
+        for idx, item in enumerate(self.dataset):
+            if max_samples and idx >= max_samples:
+                break
+            self.data.append(item)
+
         self.tokenize = tokenize
         self.preprocess = clip_preprocessor()
 
     def __len__(self):
-        return self.length
+        return len(self.data)
 
-    def __iter__(self):
+    def __get_item__(self, index: int):
         """
         The core of the IterableDataset. This method yields processed samples.
         """
-        for item in self.dataset:
-            try:
-                # Download the image from the URL
-                response = requests.get(item["url"], timeout=10)
-                response.raise_for_status()
+        item = self.data[index]
+        try:
+            # Download the image from the URL
+            response = requests.get(item["url"], timeout=10)
+            response.raise_for_status()
 
-                # Open image and convert to RGB
-                image = Image.open(BytesIO(response.content)).convert("RGB")
+            # Open image and convert to RGB
+            image = Image.open(BytesIO(response.content)).convert("RGB")
 
-                # Apply transformations to the image
-                processed_image = self.preprocess(image)
+            # Apply transformations to the image
+            processed_image = self.preprocess(image)
 
-                # The text is already available
-                caption = item["caption"]
+            # The text is already available
+            caption = item["caption"]
 
-                if self.tokenize:
-                    caption = clip.tokenize(caption, truncate=True)
+            if self.tokenize:
+                caption = clip.tokenize(caption, truncate=True)
 
-                yield processed_image, caption
+            yield processed_image, caption
 
-            except (requests.RequestException, IOError, TypeError, ValueError) as e:
-                # If an image fails to download or process, log the error and skip it.
-                logger.warning(
-                    f"Skipping item. Could not load image from URL {item.get('url', 'N/A')}. Reason: {e}")
-                continue
+        except (requests.RequestException, IOError, TypeError, ValueError) as e:
+            # If an image fails to download or process, log the error and skip it.
+            logger.warning(
+                f"Skipping item. Could not load image from URL {item.get('url', 'N/A')}. Reason: {e}")
+            return None, None
+        
+    @staticmethod
+    def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None]]):
+        # Text must be tokenized already
+        images = torch.stack([img for img, _ in batch if img is not None])
+        captions = torch.cat([caption for _, caption in batch if caption is not None])
+        return images, captions

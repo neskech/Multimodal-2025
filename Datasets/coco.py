@@ -72,23 +72,17 @@ class CocoDataset(torch.utils.data.Dataset):
         if self.tokenize:
             caption = clip.tokenize(caption, truncate=True)
 
-        return {
-            "image": imageTensor,
-            "caption": caption
-        }
+        return imageTensor, caption
 
     @staticmethod
-    def collate_function(batch: List[Dict]):
+    def collate_function(batch: List[tuple[torch.Tensor, torch.Tensor]]):
         # Text must be tokenized already
-        images = torch.stack([item["image"] for item in batch])
-        captions = torch.cat([item["caption"] for item in batch])
-        return {
-            "images": images,
-            "captions": captions
-        }
+        images = torch.stack([img for img, _ in batch])
+        captions = torch.cat([caption for _, caption in batch])
+        return images, captions
 
     @staticmethod
-    def download(data_dir: str = "Data"):
+    def download(download_script_path: str = './download_coco.sh', data_dir: str = "Data"):
         """
         Download COCO dataset if not already present.
 
@@ -101,7 +95,7 @@ class CocoDataset(torch.utils.data.Dataset):
         if not os.path.exists(coco_dir):
             os.makedirs(coco_dir, exist_ok=True)
             logger.info("Downloading COCO dataset...")
-            subprocess.run(["bash", "Datasets/download_coco.sh"], check=True)
+            subprocess.run(["bash", download_script_path], check=True)
             logger.info("COCO dataset downloaded.")
         else:
             logger.info("COCO dataset already exists. Skipping download.")
