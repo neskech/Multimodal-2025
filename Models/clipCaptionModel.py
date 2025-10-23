@@ -259,7 +259,7 @@ class ClipCaptionModel(nn.Module):
     def __init__(
         self,
         prefix_length: int,
-        clip_length: Optional[int] = None,
+        clip_length: int,
         prefix_size: int = 512,
         num_layers: int = 8,
         mapping_type="legacy",
