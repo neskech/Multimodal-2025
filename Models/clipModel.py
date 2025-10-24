@@ -7,7 +7,7 @@ import torch
 import clip
 from PIL import Image
 from typing import List, Union, override
-from Models.clipInterface import ClipInterface
+from .clipInterface import ClipInterface
 
 
 # Global constant for model configuration
