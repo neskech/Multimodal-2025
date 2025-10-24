@@ -35,7 +35,10 @@ class LaionDataset(torch.utils.data.Dataset):
             captions_data = json.load(f)
 
         self.data = []
-        for filename in os.listdir(laoin_path):
+        for filename in sorted(os.listdir(laoin_path)):
+            if not filename.endswith('.jpg'):
+                continue
+
             index = int(filename.split("_")[1].split(".")[0])
             caption = captions_data['captions'][index]
             self.data.append({
@@ -84,9 +87,12 @@ class LaionDataset(torch.utils.data.Dataset):
         )
 
         laoin_path = os.path.join(data_dir, "laion")
-        if not os.path.exists(laoin_path):
-            os.makedirs(laoin_path)
-            logger.info("Downloading LAION dataset samples...")
+        if os.path.exists(laoin_path):
+            logger.info("LAION dataset samples already downloaded.")
+            return
+        
+        os.makedirs(laoin_path)
+        logger.info("Downloading LAION dataset samples...")
 
         captions = []
         num_saved_images = 0

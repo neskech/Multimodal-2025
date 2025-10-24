@@ -34,6 +34,13 @@ class CLIPModel(ClipInterface):
         # Load CLIP model
         self.model, self.preprocess = clip.load(self.model_name, device=self.device)
 
+    def freeze_for_finetuning(self):
+        """Freeze CLIP model parameters for finetuning."""
+        for param in self.model.parameters():
+            param.requires_grad = False
+        self.model.visual.proj.requires_grad = True
+        self.model.text_projection.requires_grad = True
+
     def encode_image_tensors(
         self,
         image_tensors: torch.Tensor,

@@ -29,7 +29,10 @@ class CC12mDataset(torch.utils.data.Dataset):
             captions_data = json.load(f)
 
         self.data = []
-        for filename in os.listdir(self.cc12m_dir):
+        for filename in sorted(os.listdir(self.cc12m_dir)):
+            if not filename.endswith('.jpg'):
+                continue
+             
             index = int(filename.split("_")[1].split(".")[0])
             caption = captions_data['captions'][index]
             self.data.append({

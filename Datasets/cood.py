@@ -22,11 +22,11 @@ class CoodDataset(torch.utils.data.Dataset):
         self.preprocess = clip_preprocessor()
 
         self.data = []
-        for folder in os.listdir(self.data_dir):
+        for folder in sorted(os.listdir(self.data_dir)):
             caption = folder
             folder_path = os.path.join(self.data_dir, folder)
 
-            for image in os.listdir(folder_path):
+            for image in sorted(os.listdir(folder_path)):
                 img_path = os.path.join(folder_path, image)
                 if os.path.isfile(img_path):
                     self.data.append({
