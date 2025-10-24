@@ -9,3 +9,4 @@ Datasets/*.pyc
 Notebooks/wandb/
 **/__pycache__/
 Notebooks/*.pt
+Notebooks/wandb/
