@@ -1,7 +1,6 @@
-
 import json
 import os
-from typing import List, Dict, Optional, Literal
+from typing import List, Dict, Optional, Literal, Union
 import logging
 from PIL import Image
 import clip
@@ -10,18 +9,28 @@ import torch
 from Datasets.preProcess import clip_preprocessor
 
 # Set up logging
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-type CocoSplit = Literal["train2017"] | Literal["val2017"] | Literal["test2017"] | Literal["unlabeled2017"]
+# Type alias for compatibility with older Python versions
+CocoSplit = Union[
+    Literal["train2017"],
+    Literal["val2017"],
+    Literal["test2017"],
+    Literal["unlabeled2017"],
+]
 
 
 class CocoDataset(torch.utils.data.Dataset):
-    def __init__(self, data_dir: str = "Data",
-                 split: CocoSplit = "train2017",
-                 tokenize: bool = True,
-                 max_samples: Optional[int] = None):
+    def __init__(
+        self,
+        data_dir: str = "Data",
+        split: CocoSplit = "train2017",
+        tokenize: bool = True,
+        max_samples: Optional[int] = None,
+    ):
         self.data_dir = data_dir
         self.split = split
         self.max_samples = max_samples
@@ -32,14 +41,14 @@ class CocoDataset(torch.utils.data.Dataset):
         coco_dir = os.path.join(self.data_dir, "coco")
         images_dir = os.path.join(coco_dir, "images", self.split)
         annotations_file = os.path.join(
-            coco_dir, "annotations", f"captions_{self.split}.json")
+            coco_dir, "annotations", f"captions_{self.split}.json"
+        )
 
         with open(annotations_file, "r") as f:
             coco_data = json.load(f)
 
         # Create image ID to filename mapping
-        image_id_to_file = {img["id"]: img["file_name"]
-                            for img in coco_data["images"]}
+        image_id_to_file = {img["id"]: img["file_name"] for img in coco_data["images"]}
 
         self.data = []
         for ann in coco_data["annotations"]:
@@ -51,10 +60,12 @@ class CocoDataset(torch.utils.data.Dataset):
                 img_path = os.path.join(images_dir, img_file)
 
                 if os.path.exists(img_path):
-                    self.data.append({
-                        "image_path": img_path,
-                        "caption": caption,
-                    })
+                    self.data.append(
+                        {
+                            "image_path": img_path,
+                            "caption": caption,
+                        }
+                    )
 
                     if self.max_samples and len(self.data) >= self.max_samples:
                         break
@@ -66,7 +77,7 @@ class CocoDataset(torch.utils.data.Dataset):
         image_path = self.data[index]["image_path"]
         caption = self.data[index]["caption"]
 
-        image = Image.open(image_path).convert('RGB')
+        image = Image.open(image_path).convert("RGB")
         imageTensor = self.preprocess(image)
 
         if self.tokenize:
@@ -82,7 +93,9 @@ class CocoDataset(torch.utils.data.Dataset):
         return images, captions
 
     @staticmethod
-    def download(download_script_path: str = './download_coco.sh', data_dir: str = "Data"):
+    def download(
+        download_script_path: str = "./download_coco.sh", data_dir: str = "Data"
+    ):
         """
         Download COCO dataset if not already present.
 
