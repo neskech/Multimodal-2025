@@ -56,26 +56,25 @@ class LaionDataset(torch.utils.data.Dataset):
         return len(self.data)
 
     def __getitem__(self, index: int):
-        """
-        The core of the IterableDataset. This method yields processed samples.
-        """
         image_path = self.data[index]["image_path"]
         caption = self.data[index]["caption"]
 
         image = Image.open(image_path).convert('RGB')
         imageTensor = self.preprocess(image)
-
-        if self.tokenize:
-            caption = clip.tokenize(caption, truncate=True)
-
-        return imageTensor, caption
         
+        if self.tokenize:
+            text = clip.tokenize(caption, truncate=True)
+
+        return imageTensor, text, caption
+
     @staticmethod
-    def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None]]):
+    def collate_function(batch: list[tuple[torch.Tensor | None, torch.Tensor | None, str]]):
         # Text must be tokenized already
-        images = torch.stack([img for img, _ in batch if img is not None])
-        captions = torch.cat([caption for _, caption in batch if caption is not None])
-        return images, captions
+        images = torch.stack([img for img, _, _ in batch if img is not None])
+        texts = torch.cat([text for _, text, _ in batch if text is not None])
+        captions = [caption for _, _, caption in batch if caption is not None]
+
+        return images, texts, captions
     
     @staticmethod
     def download(max_samples: int, data_dir: str = "Data"):
