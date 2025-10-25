@@ -10,9 +10,7 @@ import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
-from functools import partial
-from collections.abc import Iterable
-from .version import __version__
+
 import torch
 
 from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
@@ -21,68 +19,12 @@ from .loss import ClipLoss, ClipInModalityLoss
 from .transform import image_transform, AugmentationCfg
 from .tokenizer import HFTokenizer, tokenize
 
-HF_WEIGHTS_NAME = "open_clip_pytorch_model.bin"  # default pytorch pkl
-HF_SAFE_WEIGHTS_NAME = "open_clip_model.safetensors"  # safetensors version
-HF_CONFIG_NAME = 'open_clip_config.json'
+
 HF_HUB_PREFIX = 'hf-hub:'
 _MODEL_CONFIG_PATHS = [Path(__file__).parent / f"model_configs/"]
 _MODEL_CONFIGS = {}  # directory (model_name: config) of model architecture configs
-try:
-    from huggingface_hub import hf_hub_download
-    hf_hub_download = partial(hf_hub_download, library_name="open_clip", library_version=__version__)
-    _has_hf_hub = True
-except ImportError:
-    hf_hub_download = None
-    _has_hf_hub = False
-try:
-    import safetensors.torch
-    _has_safetensors = True
-except ImportError:
-    _has_safetensors = False
-def _get_safe_alternatives(filename: str) -> Iterable[str]:
-    """Returns potential safetensors alternatives for a given filename.
 
-    Use case:
-        When downloading a model from the Huggingface Hub, we first look if a .safetensors file exists and if yes, we use it.
-    """
-    if filename == HF_WEIGHTS_NAME:
-        yield HF_SAFE_WEIGHTS_NAME
 
-    if filename not in (HF_WEIGHTS_NAME,) and (filename.endswith(".bin") or filename.endswith(".pth")):
-        yield filename[:-4] + ".safetensors"
-def download_pretrained_from_hf(
-        model_id: str,
-        filename: Optional[str] = None,
-        revision: Optional[str] = None,
-        cache_dir: Optional[str] = None,
-):
-    filename = filename or HF_WEIGHTS_NAME
-
-    # Look for .safetensors alternatives and load from it if it exists
-    if _has_safetensors:
-        for safe_filename in _get_safe_alternatives(filename):
-            try:
-                cached_file = hf_hub_download(
-                    repo_id=model_id,
-                    filename=safe_filename,
-                    revision=revision,
-                    cache_dir=cache_dir,
-                )
-                return cached_file
-            except Exception:
-                pass
-
-    try:
-        # Attempt to download the file
-        cached_file = hf_hub_download(
-            repo_id=model_id,
-            filename=filename,
-            revision=revision,
-            cache_dir=cache_dir,
-        )
-        return cached_file  # Return the path to the downloaded file if successful
-    except Exception as e:
-        raise FileNotFoundError(f"Failed to download file ({filename}) for {model_id}. Last error: {e}")
 def _natural_key(string_):
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
 
@@ -179,7 +121,6 @@ def create_model(
         require_pretrained: bool = False,
         align: bool = False
 ):
-    print("entering")
     has_hf_hub_prefix = model_name.startswith(HF_HUB_PREFIX)
     if has_hf_hub_prefix:
         model_id = model_name[len(HF_HUB_PREFIX):]
