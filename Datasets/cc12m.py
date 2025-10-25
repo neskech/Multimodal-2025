@@ -60,7 +60,8 @@ class CC12mDataset(torch.utils.data.Dataset):
     def __getitem__(self, index: int):
         try:
             # Download the image from the URL
-            response = requests.get(self.data[index]["url"], timeout=10)
+            print(self.data[index]["image_path"])
+            response = requests.get(self.data[index]["image_path"], timeout=10)
             response.raise_for_status()
 
             # Open image and convert to RGB
@@ -80,8 +81,8 @@ class CC12mDataset(torch.utils.data.Dataset):
         except (requests.RequestException, IOError, TypeError, ValueError) as e:
             # If an image fails to download or process, log the error and skip it.
             logger.warning(
-                f"Skipping item. Could not load image from URL "
-                + self.data[index]["url"]
+                "Skipping item. Could not load image from URL "
+                + self.data[index]["image_path"]
                 + ". Reason: {e}"
             )
             return None, None
