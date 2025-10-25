@@ -8,6 +8,7 @@ import os
 import ssl
 import urllib.request
 import clip
+import types
 from PIL import Image
 from typing import List, Union
 from Models.clipInterface import ClipInterface
@@ -55,15 +56,53 @@ class CLOOBModel(ClipInterface):
         self.model = model_pt.get_pt_model(self.config)
         checkpoint = pretrained.download_checkpoint(self.config)
         self.model.load_state_dict(model_pt.get_pt_params(self.config, checkpoint))
-        self.model.to(self.device)
+        self.model = self.model.to(self.device)
+
+    def freeze_for_finetuning(self):
+        """Freeze CLOOB model parameters for finetuning."""
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+        self.model.image_encoder.proj.requires_grad = True
+        self.model.text_encoder.proj.requires_grad = True
+
+        def text_forward(instance, x):
+            eot_mask = x == instance.eot_token
+            padding_mask = torch.cumsum(eot_mask, dim=-1) == 0 | eot_mask
+            x = instance.embed(x)
+            x = instance.pos_embed(x)
+            for layer in instance.layers:
+                x = layer(x, padding_mask)
+            x.requires_grad_(True) # NOTE: New line
+            x = x[:, 0]
+            x = instance.proj(x)
+            x = torch.nn.functional.normalize(x, dim=-1)
+            return x
+
+        self.model.text_encoder.forward = types.MethodType(text_forward, self.model.text_encoder)
+
+        def visual_forward(instance, x):
+            x = instance.embed(x)
+            x = x.reshape([x.shape[0], x.shape[1], -1]).permute([0, 2, 1])
+            x = torch.cat([instance.class_embed[None, None].repeat([x.shape[0], 1, 1]), x], dim=1)
+            x = instance.pos_embed(x)
+            for layer in instance.layers:
+                x = layer(x)
+            x.requires_grad_(True) # NOTE: New line
+            x = x[:, 0]
+            x = instance.proj(x)
+            x = torch.nn.functional.normalize(x, dim=-1)
+            return x
+        
+        self.model.image_encoder.forward = types.MethodType(visual_forward, self.model.image_encoder)
+
 
     def get_config(self):
         return self.config
  
     def encode_image_tensors(self,
                              image_tensors: torch.Tensor,
-                             requires_grad: bool = True,
-                             normalize: bool = False) -> torch.Tensor:
+                             requires_grad: bool = True) -> torch.Tensor:
         """
         Encode image tensors to embeddings.
 
@@ -71,7 +110,6 @@ class CLOOBModel(ClipInterface):
             image_tensors: Batch of image tensors
                           Shape: [batch_size, 3, 224, 224]
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize embeddings to unit sphere (default: False)
 
         Returns:
             Image embeddings
@@ -83,16 +121,12 @@ class CLOOBModel(ClipInterface):
             with torch.no_grad():
                 image_features = self.model.image_encoder(image_tensors)
 
-        if normalize:
-            image_features = image_features / image_features.norm(dim=1, keepdim=True)
-
         return image_features
 
     def encode_text_tokens(
         self,
         text_tokens: torch.Tensor,
-        requires_grad: bool = True,
-        normalize: bool = False,
+        requires_grad: bool = True
     ) -> torch.Tensor:
         """
         Encode tokenized text to embeddings.
@@ -101,20 +135,16 @@ class CLOOBModel(ClipInterface):
             text_tokens: Batch of tokenized text tensors
                         Shape: [batch_size, 77] (context_length)
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize embeddings to unit sphere (default: False)
 
         Returns:
             Text embeddings
             Shape: [batch_size, 512]
         """
         if requires_grad:
-            text_features = self.model.text_encoder(text_tokens)
+            text_features = self.model.text_encoder.forward(text_tokens)
         else:
             with torch.no_grad():
-                text_features = self.model.text_encoder(text_tokens)
-
-        if normalize:
-            text_features = text_features / text_features.norm(dim=1, keepdim=True)
+                text_features = self.model.text_encoder.forward(text_tokens)
 
         return text_features
 
@@ -122,7 +152,6 @@ class CLOOBModel(ClipInterface):
         self,
         texts: Union[str, List[str]],
         requires_grad: bool = True,
-        normalize: bool = False,
     ) -> torch.Tensor:
         """
         Encode text strings to embeddings.
@@ -130,7 +159,6 @@ class CLOOBModel(ClipInterface):
         Args:
             texts: Single text string or list of text strings
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize embeddings to unit sphere (default: False)
 
         Returns:
             Text embeddings
@@ -145,14 +173,13 @@ class CLOOBModel(ClipInterface):
         text_tokens = text_tokens.to(self.device)
 
         return self.encode_text_tokens(
-            text_tokens, requires_grad=requires_grad, normalize=normalize
+            text_tokens, requires_grad=requires_grad
         )
 
     def encode_images(
         self,
         image_paths: Union[str, List[str]],
         requires_grad: bool = True,
-        normalize: bool = False,
     ) -> torch.Tensor:
         """
         Encode images from file paths to embeddings.
@@ -160,7 +187,6 @@ class CLOOBModel(ClipInterface):
         Args:
             image_paths: Single image path or list of image paths
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize embeddings to unit sphere (default: False)
 
         Returns:
             Image embeddings
@@ -188,7 +214,7 @@ class CLOOBModel(ClipInterface):
         image_tensors = torch.cat(image_tensors, dim=0).to(self.device)
 
         return self.encode_image_tensors(
-            image_tensors, requires_grad=requires_grad, normalize=normalize
+            image_tensors, requires_grad=requires_grad
         )
 
     def get_embedding_dimension(self) -> int:

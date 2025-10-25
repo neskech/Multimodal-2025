@@ -35,7 +35,7 @@ class ClipLoss(nn.Module):
         Returns:
             Contrastive loss value
         """
-       # Normalize features
+        # Normalize features
         image_features = torch.nn.functional.normalize(image_features, dim=-1, p=2)
         text_features = torch.nn.functional.normalize(text_features, dim=-1, p=2)
 

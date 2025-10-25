@@ -10,3 +10,4 @@ Notebooks/wandb/
 **/__pycache__/
 Notebooks/*.pt
 checkpoints/
+Notebooks/wandb/

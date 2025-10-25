@@ -7,10 +7,14 @@ import clip
 from torch import nn
 from PIL import Image
 from typing import List, Union
+from AlignCLIP.alignclip.model import CLIP
+from AlignCLIP.alignclip.factory import create_model
 
 
 # Global constant for model configuration
-MODEL_NAME = "ViT-B/32"
+MODEL_NAME = "hf-hub:sarahESL/AlignCLIP"
+
+
 
 class AlignCLIPModel(nn.Module):
     """
@@ -30,7 +34,8 @@ class AlignCLIPModel(nn.Module):
         self.model_name = MODEL_NAME
 
         # Load CLIP model
-        self.model, self.preprocess = clip.load(MODEL_NAME, device=self.device)
+        self.model = create_model(self.model_name, device=self.device)
+        self.model.to(self.device)
 
     def encode_image_tensors(self,
                              image_tensors: torch.Tensor,
