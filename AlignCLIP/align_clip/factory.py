@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 from functools import partial
 from collections.abc import Iterable
+from .version import __version__
 import torch
 
 from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
