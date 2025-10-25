@@ -55,7 +55,7 @@ def download_pretrained_from_hf(
         revision: Optional[str] = None,
         cache_dir: Optional[str] = None,
 ):
-    filename = filename
+    filename = filename or HF_WEIGHTS_NAME
 
     # Look for .safetensors alternatives and load from it if it exists
     if _has_safetensors:
