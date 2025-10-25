@@ -11,7 +11,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 from functools import partial
-from collections import Iterable, Iterator
+from collections.abc import Iterable
 import torch
 
 from .constants import OPENAI_DATASET_MEAN, OPENAI_DATASET_STD
