@@ -282,7 +282,7 @@ for i in range(102):
 FLOWERS_CLASSNAMES=tuple(labels)
 ##### Stanford Cars
 from scipy.io import loadmat
-path = './MultiModal-2025/AlignCLIP/classes/stanford_cars_annos.mat'
+path = './AlignCLIP/classes/stanford_cars_annos.mat'
 annotations = loadmat(path)
 STANFORD_CLASSNAMES = tuple([annotations['class_names'][0][i][0] for i in range(196)])
 ##### IMAGENET-O
