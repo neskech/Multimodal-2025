@@ -45,11 +45,11 @@ class CoodDataset(torch.utils.data.Dataset):
 
         image = Image.open(image_path).convert('RGB')
         imageTensor = self.preprocess(image)
-
+        
         if self.tokenize:
-            caption = clip.tokenize(caption, truncate=True)
+            text = clip.tokenize(caption, truncate=True)
 
-        return imageTensor, caption
+        return imageTensor, text, caption
 
     @staticmethod
     def collate_function(batch: list[tuple[torch.Tensor, torch.Tensor]]):
