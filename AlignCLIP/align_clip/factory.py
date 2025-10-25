@@ -95,12 +95,12 @@ def load_state_dict(checkpoint_path: str, map_location='cpu'):
 
 
 def load_checkpoint(model, checkpoint_path, strict=True):
-    state_dict = load_state_dict(checkpoint_path)
+    state_dict = load_state_dict(checkpoint_path, weights_only=False)
     # detect old format and make compatible with new format
     if 'positional_embedding' in state_dict and not hasattr(model, 'positional_embedding'):
         state_dict = convert_to_custom_text_state_dict(state_dict)
     resize_pos_embed(state_dict, model)
-    incompatible_keys = model.load_state_dict(state_dict, strict=strict, weights_only=False)
+    incompatible_keys = model.load_state_dict(state_dict, strict=strict)
     return incompatible_keys
 
 
