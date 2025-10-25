@@ -18,7 +18,7 @@ class LlamaCaptioner:
             llama_model_name (str): The name of the Llama model to load from Hugging Face.
             clip_model_name (str): The name of the CLIP model to load from Hugging Face.
         """
-        print("Initializing models... This may take a moment.")
+        print("Initializing Models... This may take a moment.")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         # Load Llama 3 model and tokenizer

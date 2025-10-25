@@ -15,7 +15,7 @@ from von_mises_fisher import VonMisesFisherMixture
 
 
 class VonMisesFisherVisualizer:
-    """Visualization tools for von Mises-Fisher mixture models."""
+    """Visualization tools for von Mises-Fisher mixture Models."""
 
     def __init__(self, mixture_model: VonMisesFisherMixture):
         """

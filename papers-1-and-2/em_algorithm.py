@@ -1,5 +1,5 @@
 """
-Expectation-Maximization algorithm for fitting von Mises-Fisher mixture models.
+Expectation-Maximization algorithm for fitting von Mises-Fisher mixture Models.
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ from von_mises_fisher import VonMisesFisher, VonMisesFisherMixture
 
 class VonMisesFisherEM:
     """
-    Expectation-Maximization algorithm for von Mises-Fisher mixture models.
+    Expectation-Maximization algorithm for von Mises-Fisher mixture Models.
     """
 
     def __init__(

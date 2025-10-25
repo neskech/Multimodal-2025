@@ -1,5 +1,5 @@
 """
-Generate embeddings for different datasets using CLIP models.
+Generate embeddings for different datasets using CLIP Models.
 Supports COCO, LAION sample, custom images, and text datasets.
 """
 

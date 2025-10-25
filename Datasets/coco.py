@@ -40,9 +40,14 @@ class CocoDataset(torch.utils.data.Dataset):
         logger.info(f"Loading COCO {split} dataset...")
         coco_dir = os.path.join(self.data_dir, "coco")
         images_dir = os.path.join(coco_dir, "images", self.split)
-        annotations_file = os.path.join(
-            coco_dir, "annotations", f"captions_{self.split}.json"
-        )
+        if split != "test2017":
+            annotations_file = os.path.join(
+                coco_dir, "annotations", f"captions_{self.split}.json"
+            )
+        else:
+            annotations_file = os.path.join(
+                coco_dir, "annotations", f"image_info_{self.split}.json"
+            )
 
         with open(annotations_file, "r") as f:
             coco_data = json.load(f)
@@ -51,6 +56,7 @@ class CocoDataset(torch.utils.data.Dataset):
         image_id_to_file = {img["id"]: img["file_name"] for img in coco_data["images"]}
 
         self.data = []
+        print(coco_data["info"].keys(), coco_data["images"])
         for ann in coco_data["annotations"]:
             image_id = ann["image_id"]
             caption = ann["caption"]
