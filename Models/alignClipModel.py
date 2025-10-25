@@ -7,8 +7,8 @@ import clip
 from torch import nn
 from PIL import Image
 from typing import List, Union
-from AlignCLIP.alignclip.model import CLIP
-from AlignCLIP.alignclip.factory import create_model
+from AlignCLIP.align_clip.model import CLIP
+from AlignCLIP.align_clip.factory import create_model
 
 
 # Global constant for model configuration
