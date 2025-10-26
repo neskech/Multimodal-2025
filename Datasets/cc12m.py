@@ -60,12 +60,12 @@ class CC12mDataset(torch.utils.data.Dataset):
     def __getitem__(self, index: int):
         try:
             # Download the image from the URL
-            print(self.data[index]["image_path"])
-            response = requests.get(self.data[index]["image_path"], timeout=10)
-            response.raise_for_status()
+            # print(self.data[index]["image_path"])
+            # response = requests.get(self.data[index]["image_path"], timeout=10)
+            # response.raise_for_status()
 
             # Open image and convert to RGB
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = Image.open(self.data[index]["image_path"]).convert("RGB")
 
             # Apply transformations to the image
             processed_image = self.preprocess(image)

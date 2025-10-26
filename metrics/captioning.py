@@ -32,7 +32,11 @@ class CaptioningMetric:
         # Train the captioning model on CC12m dataset
         trained_model, _, _, val_embeddings, val_captions = (
             train_caption_model_on_cc12m(
-                clip_model=clip_model, num_epochs=3, batch_size=4, data_dir=data_dir
+                clip_model=clip_model,
+                num_epochs=3,
+                batch_size=4,
+                data_dir=data_dir,
+                max_samples=10000,
             )
         )
 
@@ -42,8 +46,8 @@ class CaptioningMetric:
             img_emb = img_emb.unsqueeze(0).to(device)
             generated_caption = generate_caption(trained_model, img_emb, tokenizer)
             predictions.append(generated_caption)
-
-        return bleu_score(val_captions, predictions=predictions)
+        print(predictions, val_captions)
+        return bleu_score(predictions, val_captions)
 
 
 def bleu_score(predictions, references):
@@ -266,8 +270,12 @@ def train_caption_model(image_embeddings, captions, num_epochs=5, batch_size=8):
             tokens = batch["tokens"].to(device)
 
             optimizer.zero_grad()
-            outputs = caption_model(tokens[:, :-1], image_embeddings_batch)
+            outputs = caption_model(tokens[:, :-1], image_embeddings_batch.float())
             logits = outputs.logits
+            if logits.shape[1] > tokens.shape[1]:
+                logits = logits[:, : tokens.shape[1] - 1, :]
+            else:
+                tokens = tokens[:, : logits.shape[1] + 1]
 
             loss = criterion(
                 logits.reshape(-1, logits.size(-1)), tokens[:, 1:].reshape(-1)
@@ -356,6 +364,7 @@ def train_caption_model_on_cc12m(
 
     with torch.no_grad():
         for images, captions in tqdm(train_loader, desc="Computing train embeddings"):
+            images = images.to(device)
             if images is None:
                 continue
             # Get image embeddings from CLIP model
@@ -372,11 +381,16 @@ def train_caption_model_on_cc12m(
 
     with torch.no_grad():
         for images, captions in tqdm(val_loader, desc="Computing val embeddings"):
+            images = images.to(device)
             if images is None:
                 continue
             embeddings = clip_model.encode_image_tensors(images)
             val_embeddings.append(embeddings)
             val_captions.extend(captions)
+
+    if len(val_embeddings) == 0:
+        print("No val embeddings, using train as val.")
+        val_embeddings = train_embeddings
 
     val_embeddings = torch.cat(val_embeddings, dim=0)
 
