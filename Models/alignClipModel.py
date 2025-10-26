@@ -38,7 +38,7 @@ class AlignCLIPModel(nn.Module):
         )
         # Load CLIP model
         model, preprocess_train, preprocess_val = create_model_and_transforms(
-            model_name="ViT-L-16",  # Replace with actual architecture
+            model_name="ViT-B-16",  # Replace with actual architecture
             pretrained=checkpoint_path,
             device=device  # or "cpu"
         )

@@ -289,7 +289,7 @@ def create_model_and_transforms(
         output_dict=output_dict,
         align=align
     )
-
+    
     image_mean = image_mean or getattr(model.visual, 'image_mean', None)
     image_std = image_std or getattr(model.visual, 'image_std', None)
     preprocess_train = image_transform(
