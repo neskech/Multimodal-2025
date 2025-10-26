@@ -11,6 +11,8 @@ from Datasets.download_from_google import download_from_google
 from Datasets.preProcess import clip_preprocessor
 import pandas as pd
 import json
+import webdataset as wds
+from huggingface_hub import HfFileSystem, get_token, hf_hub_url
 
 # Set up logging
 logging.basicConfig(
@@ -27,29 +29,33 @@ class CC12mDataset(torch.utils.data.Dataset):
         data_dir: str = "Data",
         tokenize: bool = True,
         max_samples: int | None = None,
+        dataset=None,
     ):
         super().__init__()
-        self.cc12m_dir = os.path.join(data_dir, "cc12m")
+        print("cc12m dataset", dataset)
+        if dataset is not None:
+            self.wds_dataset = dataset
+        else:
+            # Load dataset from HuggingFace using webdataset
+            fs = HfFileSystem()
+            files = [
+                fs.resolve_path(path)
+                for path in fs.glob("hf://datasets/pixparse/cc12m-wds/*/-train-*.tar")
+            ]
+            urls = [
+                hf_hub_url(file.repo_id, file.path_in_repo, repo_type="dataset")
+                for file in files
+            ]
+            urls = f"pipe: curl -s -L -H 'Authorization:Bearer {get_token()}' {'::'.join(urls)}"
 
-        with open(os.path.join(self.cc12m_dir, "captions.json"), "r") as f:
-            captions_data = json.load(f)
+            self.wds_dataset = wds.WebDataset(urls).decode().shuffle(max_samples // 100)
 
+        # Convert to list for indexing (if max_samples is specified)
         self.data = []
-        for filename in sorted(os.listdir(self.cc12m_dir)):
-            if not filename.endswith(".jpg"):
-                continue
-
-            index = int(filename.split("_")[1].split(".")[0])
-            caption = captions_data["captions"][index]
-            self.data.append(
-                {
-                    "image_path": os.path.join(self.cc12m_dir, filename),
-                    "caption": caption,
-                }
-            )
-
-            if max_samples and len(self.data) >= max_samples:
+        for i, sample in enumerate(self.wds_dataset):
+            if max_samples and i >= max_samples:
                 break
+            self.data.append(sample)
 
         self.tokenize = tokenize
         self.preprocess = clip_preprocessor()
@@ -59,32 +65,39 @@ class CC12mDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index: int):
         try:
-            # Download the image from the URL
-            # print(self.data[index]["image_path"])
-            # response = requests.get(self.data[index]["image_path"], timeout=10)
-            # response.raise_for_status()
+            sample = self.data[index]
 
-            # Open image and convert to RGB
-            image = Image.open(self.data[index]["image_path"]).convert("RGB")
+            # Extract image and caption from webdataset sample
+            # webdataset typically has keys like 'jpg', 'png' for images and 'txt', 'json' for text
+            image = sample.get("jpg") or sample.get("png") or sample.get("image")
+            caption = sample.get("txt") or sample.get("caption") or sample.get("text")
+
+            if image is None or caption is None:
+                logger.warning(
+                    f"Skipping item at index {index}. Missing image or caption."
+                )
+                return None, None
+
+            # If image is bytes, convert to PIL Image
+            if isinstance(image, bytes):
+                image = Image.open(BytesIO(image)).convert("RGB")
+            elif not isinstance(image, Image.Image):
+                image = Image.open(image).convert("RGB")
 
             # Apply transformations to the image
             processed_image = self.preprocess(image)
 
-            # The text is already available
-            caption = self.data[index]["caption"]
+            # Process caption
+            if isinstance(caption, bytes):
+                caption = caption.decode("utf-8")
 
             if self.tokenize:
                 caption = clip.tokenize(caption, truncate=True)
 
             return processed_image, caption
 
-        except (requests.RequestException, IOError, TypeError, ValueError) as e:
-            # If an image fails to download or process, log the error and skip it.
-            logger.warning(
-                "Skipping item. Could not load image from URL "
-                + self.data[index]["image_path"]
-                + ". Reason: {e}"
-            )
+        except (IOError, TypeError, ValueError, KeyError) as e:
+            logger.warning(f"Skipping item at index {index}. Reason: {e}")
             return None, None
 
     @staticmethod

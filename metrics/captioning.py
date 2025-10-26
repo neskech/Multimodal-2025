@@ -17,6 +17,7 @@ class CaptioningMetric:
         captions: List[str],
         clip_model,
         data_dir: str = "Data",
+        dataset=None,
     ) -> float:
         """
         1. Finetune a captioning model on the provided embeddings and captions.
@@ -28,7 +29,7 @@ class CaptioningMetric:
         # Initialize tokenizer
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
         tokenizer.pad_token = tokenizer.eos_token
-
+        print("cc12m dataset", dataset)
         # Train the captioning model on CC12m dataset
         trained_model, _, _, val_embeddings, val_captions = (
             train_caption_model_on_cc12m(
@@ -37,6 +38,7 @@ class CaptioningMetric:
                 batch_size=4,
                 data_dir=data_dir,
                 max_samples=10000,
+                dataset=dataset,
             )
         )
 
@@ -302,6 +304,7 @@ def train_caption_model_on_cc12m(
     max_samples=1000,
     batch_size=8,
     num_epochs=5,
+    dataset=None,
 ):
     """
     Complete pipeline to train a captioning model on CC12m (Conceptual Captions) dataset.
@@ -321,10 +324,14 @@ def train_caption_model_on_cc12m(
 
     # Download and load CC12m dataset
     print("Loading CC12m dataset...")
-    CC12mDataset.download(max_samples=max_samples, data_dir=data_dir)
+    print("cc12m dataset", dataset)
+    if dataset is not None:
+        CC12mDataset.download(max_samples=max_samples, data_dir=data_dir)
 
     # Load the full dataset (tokenize=False since we don't need CLIP tokens, just captions)
-    all_data = CC12mDataset(data_dir=data_dir, tokenize=False, max_samples=max_samples)
+    all_data = CC12mDataset(
+        data_dir=data_dir, tokenize=False, max_samples=max_samples, dataset=dataset
+    )
 
     # Split into train and validation
     num_train = int(0.8 * len(all_data))
