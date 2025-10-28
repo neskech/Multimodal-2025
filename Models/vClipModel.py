@@ -57,12 +57,12 @@ class VariationalCLIPModel(ClipInterface):
         self.model.text_projection = nn.Parameter(
             torch.empty(transformer_width, output_dim)
         )
+        nn.init.normal_(self.model.text_projection, std=transformer_width**-0.5)
 
     def encode_image_tensors(
         self,
         image_tensors: torch.Tensor,
-        requires_grad: bool = True,
-        normalize: bool = False,
+        requires_grad: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode image tensors to von Mises-Fisher distribution parameters.
@@ -71,7 +71,6 @@ class VariationalCLIPModel(ClipInterface):
             image_tensors: Batch of image tensors
                           Shape: [batch_size, 3, 224, 224]
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize mean direction to unit sphere (default: False)
 
         Returns:
             Tuple of (mean_direction, concentration)
@@ -89,18 +88,16 @@ class VariationalCLIPModel(ClipInterface):
         mean_direction = full_output[:, :-1]  # Shape: [batch_size, 512]
         concentration = full_output[:, -1]  # Shape: [batch_size]
 
-        if normalize:
-            mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
+        mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
 
         # Sigmoid transform concentration to ensure positivity (strict > 0)
-        concentration = torch.nn.functional.softplus(concentration) + 1e-7
+        concentration = torch.nn.functional.softplus(concentration + 5.0) + 1e-7
         return mean_direction, concentration
 
     def encode_text_tokens(
         self,
         text_tokens: torch.Tensor,
-        requires_grad: bool = True,
-        normalize: bool = False,
+        requires_grad: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode tokenized text to von Mises-Fisher distribution parameters.
@@ -127,18 +124,16 @@ class VariationalCLIPModel(ClipInterface):
         mean_direction = full_output[:, :-1]  # Shape: [batch_size, 512]
         concentration = full_output[:, -1]  # Shape: [batch_size]
 
-        if normalize:
-            mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
+        mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
 
         # softplus transform concentration to ensure positivity (strict > 0)
-        concentration = torch.nn.functional.softplus(concentration) + 1e-7
+        concentration = torch.nn.functional.softplus(concentration + 0.0) + 1e-7
         return mean_direction, concentration
 
     def encode_text(
         self,
         texts: Union[str, List[str]],
         requires_grad: bool = True,
-        normalize: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode text strings to von Mises-Fisher distribution parameters.
@@ -146,7 +141,6 @@ class VariationalCLIPModel(ClipInterface):
         Args:
             texts: Single text string or list of text strings
             requires_grad: Whether to compute gradients (default: True)
-            normalize: Whether to normalize mean direction to unit sphere (default: False)
 
         Returns:
             Tuple of (mean_direction, concentration)
@@ -162,14 +156,13 @@ class VariationalCLIPModel(ClipInterface):
         text_tokens = text_tokens.to(self.device)
 
         return self.encode_text_tokens(
-            text_tokens, requires_grad=requires_grad, normalize=normalize
+            text_tokens, requires_grad=requires_grad
         )
 
     def encode_images(
         self,
         image_paths: Union[str, List[str]],
         requires_grad: bool = True,
-        normalize: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Encode images from file paths to von Mises-Fisher distribution parameters.
@@ -206,7 +199,7 @@ class VariationalCLIPModel(ClipInterface):
         image_tensors = torch.cat(image_tensors, dim=0).to(self.device)
 
         return self.encode_image_tensors(
-            image_tensors, requires_grad=requires_grad, normalize=normalize
+            image_tensors, requires_grad=requires_grad
         )
 
     def get_embedding_dimension(self) -> int:
