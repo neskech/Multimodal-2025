@@ -54,7 +54,7 @@ class VariationalCLIPModel(ClipInterface):
         # As such, we need to extract that width parameter.
         transformer_width = self.model.transformer.width
         output_dim = CLIP_EMBEDDING_DIM + 1
-        self.model.text_encoder.proj = nn.Parameter(
+        self.model.text_projection = nn.Parameter(
             torch.empty(transformer_width, output_dim)
         )
 
@@ -92,6 +92,8 @@ class VariationalCLIPModel(ClipInterface):
         if normalize:
             mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
 
+        # Sigmoid transform concentration to ensure positivity (strict > 0)
+        concentration = torch.nn.functional.softplus(concentration) + 1e-7
         return mean_direction, concentration
 
     def encode_text_tokens(
@@ -128,6 +130,8 @@ class VariationalCLIPModel(ClipInterface):
         if normalize:
             mean_direction = mean_direction / mean_direction.norm(dim=1, keepdim=True)
 
+        # softplus transform concentration to ensure positivity (strict > 0)
+        concentration = torch.nn.functional.softplus(concentration) + 1e-7
         return mean_direction, concentration
 
     def encode_text(
