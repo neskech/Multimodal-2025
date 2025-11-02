@@ -4,6 +4,3 @@
 [submodule "cloob-training"]
 	path = cloob-training
 	url = https://github.com/crowsonkb/cloob-training.git
-[submodule "AlignCLIP"]
-	path = AlignCLIP
-	url = https://github.com/sarahESL/AlignCLIP.git

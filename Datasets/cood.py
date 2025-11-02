@@ -45,18 +45,20 @@ class CoodDataset(torch.utils.data.Dataset):
 
         image = Image.open(image_path).convert('RGB')
         imageTensor = self.preprocess(image)
-
+        
         if self.tokenize:
-            caption = clip.tokenize(caption, truncate=True)
+            text = clip.tokenize(caption, truncate=True)
 
-        return imageTensor, caption
+        return imageTensor, text, caption
 
     @staticmethod
-    def collate_function(batch: list[tuple[torch.Tensor, torch.Tensor]]):
+    def collate_function(batch: list[tuple[torch.Tensor, torch.Tensor, str]]):
         # Text must be tokenized already
-        images = torch.stack([img for img, _ in batch])
-        captions = torch.cat([caption for _, caption in batch])
-        return images, captions
+        images = torch.stack([img for img, _, _ in batch])
+        texts = torch.cat([text for _, text, _ in batch])
+        captions = [caption for _, _, caption in batch]
+
+        return images, texts, captions
 
     @staticmethod
     def download(data_dir: str = "Data"):

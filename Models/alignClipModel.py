@@ -7,9 +7,9 @@ import clip
 from torch import nn
 from PIL import Image
 from typing import List, Union
-from AlignCLIP.alignclip.model import CLIP
-from AlignCLIP.alignclip.factory import create_model
-
+from AlignCLIP.align_clip.model import CLIP
+from AlignCLIP.align_clip.factory import create_model_and_transforms
+from huggingface_hub import hf_hub_download
 
 # Global constant for model configuration
 MODEL_NAME = "hf-hub:sarahESL/AlignCLIP"
@@ -32,10 +32,19 @@ class AlignCLIPModel(nn.Module):
         self.device = device or ("cuda"
                                  if torch.cuda.is_available() else "cpu")
         self.model_name = MODEL_NAME
-
+        checkpoint_path = hf_hub_download(
+            repo_id="sarahESL/AlignCLIP",
+            filename="alignCLIP.pt"
+        )
         # Load CLIP model
-        self.model = create_model(self.model_name, device=self.device)
-        self.model.to(self.device)
+        model, preprocess_train, preprocess_val = create_model_and_transforms(
+            model_name="ViT-B-16",  # Replace with actual architecture
+            pretrained=checkpoint_path,
+            device=device  # or "cpu"
+        )
+        self.model = model
+        self.preprocess_train = preprocess_train
+        self.preprocess_val = preprocess_val
 
     def encode_image_tensors(self,
                              image_tensors: torch.Tensor,
