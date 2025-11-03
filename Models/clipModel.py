@@ -41,6 +41,10 @@ class CLIPModel(ClipInterface):
         self.model.visual.proj.requires_grad = True
         self.model.text_projection.requires_grad = True
 
+    def get_logits_scale(self) -> torch.Tensor:
+        """Get the logits scale parameter."""
+        return self.model.logit_scale
+
     def encode_image_tensors(
         self,
         image_tensors: torch.Tensor,

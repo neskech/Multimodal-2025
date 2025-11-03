@@ -16,14 +16,12 @@ class ClipLoss(nn.Module):
     Computes contrastive loss between image and text features.
     """
 
-    def __init__(self, temperature: float = 0.07, label_smoothing: float = 0.1):
+    def __init__(self, label_smoothing: float = 0.1):
         super().__init__()
-        self.temperature = temperature
         self.label_smoothing = label_smoothing
-        self.register_buffer("t", torch.tensor(self.temperature))
         self.register_buffer("smoothing", torch.tensor(self.label_smoothing))
 
-    def forward(self, image_features: torch.Tensor, text_features: torch.Tensor):
+    def forward(self, image_features: torch.Tensor, text_features: torch.Tensor, logits_scale: torch.Tensor):
         """
         Compute CLIP contrastive loss.
 
@@ -45,9 +43,10 @@ class ClipLoss(nn.Module):
 
         batch_size = image_features.shape[0]
 
-        # Compute similarity matrices
-        logits_per_image = image_features @ text_features.T / self.temperature
-        logits_per_text = text_features @ image_features.T / self.temperature
+        # cosine similarity as logits
+        logit_scale = logits_scale.exp()
+        logits_per_image = logit_scale * image_features @ text_features.t()
+        logits_per_text = logits_per_image.t()
 
         # Clamp logits to avoid overflow in exp
         logits_per_image = torch.clamp(logits_per_image, -20, 20)

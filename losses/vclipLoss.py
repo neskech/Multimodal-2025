@@ -15,16 +15,16 @@ def power_spherical_mean_normalized(distribution: PowerSpherical):
 
 class VClipLoss(nn.Module):
 
-    def __init__(self, temperature=0.07, kl_weight=1.0, num_samples=20):
+    def __init__(self, kl_weight=1.0, num_samples=20):
         super(VClipLoss, self).__init__()
-        self.temperature = temperature
         self.kl_weight = kl_weight
         self.num_samples = num_samples
-        self.clip_loss = ClipLoss(temperature=temperature)
+        self.clip_loss = ClipLoss()
 
     def forward(self,
                 image_distribution: PowerSpherical,
                 text_distribution: PowerSpherical,
+                logits_scale: torch.Tensor,
                 kl_weight_override: float | None = None):
         """
         Compute V-CLIP loss using Power Spherical distributions.
@@ -52,7 +52,7 @@ class VClipLoss(nn.Module):
             text_samples_flat = power_spherical_mean_normalized(text_distribution)
 
         
-        clip_loss = self.clip_loss.forward(image_samples_flat, text_samples_flat)
+        clip_loss = self.clip_loss.forward(image_samples_flat, text_samples_flat, logits_scale)
         kl_image = torch.distributions.kl_divergence(
             image_distribution,
             HypersphericalUniform(
