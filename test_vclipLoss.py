@@ -4,6 +4,7 @@ It creates random tensors close together and backprops through the loss,
 plotting the gradients to ensure the KL term makes the variance increase
 """
 
+from typing_extensions import Literal
 import torch
 import matplotlib.pyplot as plt
 from losses.distributions.VonMisesFisher import VonMisesFisher
@@ -166,8 +167,8 @@ def create_snapshot_frame(og_features_a, og_features_b, features_a, features_b,
     
     return image
 
-def test_vclip_loss():
-    torch.manual_seed(0)
+def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = "PowerSpherical"):
+    torch.manual_seed(42)
     batch_size = 10
     feature_dim = 2
 
@@ -180,9 +181,16 @@ def test_vclip_loss():
     features_b /= features_b.norm(p=2, dim=-1, keepdim=True)
 
     print ("Feature A norms:", features_a.norm(p=2, dim=-1, keepdim=True).shape, features_a.shape)
+    print(f"Using distribution: {distribution}")
 
-    concentrations_a = torch.ones(batch_size*2, 1) * 0.1  # Fixed: should be batch_size*2
-    concentrations_b = torch.ones(batch_size*2, 1) * 0.1  # Fixed: should be batch_size*2
+    # PowerSpherical expects concentration shape [batch] (1D)
+    # VonMisesFisher expects concentration shape [batch, 1] (2D)
+    if distribution == "PowerSpherical":
+        concentrations_a = torch.ones(batch_size*2) * 0.1
+        concentrations_b = torch.ones(batch_size*2) * 0.1
+    else:
+        concentrations_a = torch.ones(batch_size*2, 1) * 0.1
+        concentrations_b = torch.ones(batch_size*2, 1) * 0.1
 
     og_features_a = features_a.clone().detach()
     og_features_b = features_b.clone().detach()
@@ -232,8 +240,15 @@ def test_vclip_loss():
         if logits_scale.grad is not None:
             logits_scale.grad.zero_()
         
-        dist_a = VonMisesFisher(features_a, concentrations_a)
-        dist_b = VonMisesFisher(features_b, concentrations_b)
+        # Create distributions based on the flag
+        if distribution == "PowerSpherical":
+            dist_a = PowerSpherical(features_a, concentrations_a)
+            dist_b = PowerSpherical(features_b, concentrations_b)
+        elif distribution == "VonMisesFisher":
+            dist_a = VonMisesFisher(features_a, concentrations_a)
+            dist_b = VonMisesFisher(features_b, concentrations_b)
+        else:
+            raise ValueError(f"Unsupported distribution type: {distribution}")
 
         # Compute loss 
         with torch.enable_grad():
@@ -406,5 +421,16 @@ def test_vclip_loss():
     print("Average Concentration A after:", concentrations_a.mean().item())
     print("Average Concentration B before:", og_concentrations_b.mean().item())
     print("Average Concentration B after:", concentrations_b.mean().item())
+
 if __name__ == "__main__":
-    test_vclip_loss()
+    # Test with PowerSpherical (default)
+    print("=" * 60)
+    print("Testing with PowerSpherical")
+    print("=" * 60)
+    test_vclip_loss("VonMisesFisher")
+    
+    # Uncomment to test with VonMisesFisher
+    # print("\n" + "=" * 60)
+    # print("Testing with VonMisesFisher")
+    # print("=" * 60)
+    # test_vclip_loss(use_powerspherical=False)

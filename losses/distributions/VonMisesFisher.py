@@ -1,14 +1,7 @@
 import torch
 import numpy as np
 import mpmath
-from torch.distributions import Distribution, constraints
-from torch.distributions.utils import broadcast_all
-import sys
-import os
-
-# Add vmf-lib to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../vmf-lib'))
-import utils as vmf_utils
+from torch.distributions import Distribution
 
 
 class vMFLogPartition(torch.autograd.Function):
