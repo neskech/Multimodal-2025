@@ -45,7 +45,7 @@ class ClipLoss(nn.Module):
 
         # cosine similarity as logits
         logit_scale = logits_scale.exp()
-        logits_per_image = logit_scale * image_features @ text_features.t()
+        logits_per_image = logit_scale.float() * image_features.float() @ text_features.t().float()
         logits_per_text = logits_per_image.t()
 
         # Clamp logits to avoid overflow in exp

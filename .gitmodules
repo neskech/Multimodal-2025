@@ -4,3 +4,6 @@
 [submodule "cloob-training"]
 	path = cloob-training
 	url = https://github.com/crowsonkb/cloob-training.git
+[submodule "vmf-lib"]
+	path = vmf-lib
+	url = https://github.com/minyoungkim21/vmf-lib
