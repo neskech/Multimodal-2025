@@ -17,6 +17,14 @@ CLIP_EMBEDDING_DIM = 512
 ModelType: TypeAlias = Literal["Spherical", "Gaussian"]
 
 
+def _build_attention_mask(seq_length: int):
+    # lazily create causal attention mask, with full attention between the vision tokens
+    # pytorch uses additive attention mask; fill with -inf
+    mask = torch.empty(seq_length, seq_length)
+    mask.fill_(float("-inf"))
+    mask.triu_(1)  # zero out the lower diagonal
+    return mask
+
 class VariationalCLIPModel(ClipInterface):
     """
     Variational CLIP model that outputs von Mises-Fisher distribution parameters.
@@ -57,6 +65,9 @@ class VariationalCLIPModel(ClipInterface):
             self.var_image_projection = nn.Parameter(
                 scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM)
             )
+        # Modify positional embeddings to account for additional concentration token
+        sequence_length: int = self.model.visual.positional_embedding.shape[0] # type: ignore
+        self.model.visual.positional_embedding = nn.Parameter(scale * torch.randn(sequence_length + 1, vision_width))
 
         # HACK: Clip uses the transformer.width parameter to initialize the projection layer
         # As such, we need to extract that width parameter.
@@ -72,7 +83,13 @@ class VariationalCLIPModel(ClipInterface):
             self.var_text_projection = nn.Parameter(
                 scale * torch.randn(transformer_width, CLIP_EMBEDDING_DIM)
             )
-
+        # Modify positional embeddings to account for additional concentration token
+        sequence_length = self.model.positional_embedding.shape[0] # type: ignore
+        self.model.positional_embedding = nn.Parameter(scale * torch.empty(sequence_length + 1, transformer_width))
+        # Replace the attention masks with (seq length + 1) to account for the concentration token
+        mask = _build_attention_mask(sequence_length + 1)
+        for block in self.model.transformer.resblocks:
+            block.attn_mask = mask
         # CLIP only seems to do this initialization for the text projection
         nn.init.normal_(self.mean_text_projection, std=transformer_width**-0.5)
         nn.init.normal_(self.var_text_projection, std=vision_width**-0.5)
@@ -81,6 +98,9 @@ class VariationalCLIPModel(ClipInterface):
         # be appened to the end of the image patch sequence that feeds into the VIT
         self.image_concentration_embedding = nn.Parameter(
             scale * torch.randn(vision_width)
+        )
+        self.text_concentration_embedding = nn.Parameter(
+            scale * torch.randn(transformer_width)
         )
 
     def encode_image_internal(
@@ -115,26 +135,29 @@ class VariationalCLIPModel(ClipInterface):
 
         mean_embedding = mean_embedding @ self.mean_image_projection
         concentration_embedding = concentration_embedding @ self.var_image_projection
-        return mean_embedding, concentration_embedding
+        return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
 
     def encode_text_internal(
         self, text: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # NOTE: Highly copy and pasted from the text forward function in CLIP
-        x = torch.cat(self.token_embedding(text).type(self.dtype), self.text_concentration_embedding)  # [batch_size, n_ctx, d_model]
-
-        x = x + self.model.text.positional_embedding.type(self.dtype)
+        concentration_embedding_batched = self.text_concentration_embedding.unsqueeze(0).expand(text.shape[0], -1, -1)
+        x = torch.cat([
+                self.model.token_embedding(text).float(), 
+                concentration_embedding_batched
+            ], dim=1
+        )  # [batch_size, n_ctx, d_model]
+        x = x + self.model.positional_embedding.float()
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.model.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.model.ln_final(x).type(self.dtype)
+        x = self.model.ln_final(x).float()
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.mean_text_projection
+        mean_embedding = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.mean_text_projection
 
-        mean_embedding = x
-        concentration_embedding = x = x[torch.arange(x.shape[0]), text.argmax(dim=-1) + 1] @ self.var_text_projection
-        return mean_embedding, concentration_embedding
+        concentration_embedding  = x[torch.arange(x.shape[0]), text.argmax(dim=-1) + 1] @ self.var_text_projection
+        return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
 
     def get_logits_scale(self) -> torch.Tensor:
         """Get the logits scale parameter."""
@@ -185,16 +208,12 @@ class VariationalCLIPModel(ClipInterface):
         """
         if requires_grad:
             # Get full output from modified model.encode_text (512 + 1 dimensions)
-            full_output = self.model.encode_text(text_tokens)
+            mean, var = self.encode_text_internal(text_tokens)
         else:
             with torch.no_grad():
-                full_output = self.model.encode_text(text_tokens)
+                mean, var = self.encode_text_internal(text_tokens)
 
-        # Extract mean direction (first 512 elements) and concentration (last element)
-        mean_direction = full_output[:, :-1]  # Shape: [batch_size, 512]
-        concentration = full_output[:, -1]  # Shape: [batch_size]
-
-        return mean_direction, concentration
+        return mean, var
 
     def encode_text(
         self, texts: Union[str, List[str]], requires_grad: bool = True
