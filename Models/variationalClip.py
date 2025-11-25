@@ -32,7 +32,7 @@ class VariationalCLIPModel(ClipInterface):
     Modified to output mean direction (512D) and concentration parameter (1D).
     """
 
-    def __init__(self, model_type: ModelType, device: str | None = None):
+    def __init__(self, model_type: ModelType, device: str | None = None, use_pretrained: bool = True):
         """
         Initialize CLIP model.
 
@@ -41,67 +41,160 @@ class VariationalCLIPModel(ClipInterface):
                 If spherical, outputs a scalar concentration parameter.
                 If gaussian, outputs a log-variance parameter.
             device: Device to run on ('cuda', 'cpu', or None for auto-detect)
+            use_pretrained: If True, initialize projections and positional embeddings 
+                from CLIP's pretrained weights. If False, randomly initialize everything.
         """
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = MODEL_NAME
+        self.model_type = model_type
 
-        # Load CLIP model
+        # Load CLIP model (always load to get architecture, but may reinitialize weights)
         self.model, self.preprocess = clip.load(MODEL_NAME, device=self.device)
 
-        # HACK: Clip initializes their projection as nn.Parameter(scale * torch.randn(width, output_dim))
-        # In order to do the same, we need to extract that scale parameter. The scale is derived from
-        # the 'visual.width' parameter, which is used inside of this convolutional layer.
+        # Extract width parameters for initialization
         vision_width = self.model.visual.conv1.out_channels
+        transformer_width = self.model.transformer.width
         scale = vision_width**-0.5
-        self.mean_image_projection = nn.Parameter(
-            scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM)
-        )
+        text_scale = transformer_width**-0.5
+
+        # Get sequence lengths before modifying
+        visual_seq_length = self.model.visual.positional_embedding.shape[0]
+        text_seq_length = self.model.positional_embedding.shape[0]
+
+        if use_pretrained:
+            # ===== PRETRAINED INITIALIZATION =====
+            # Copy pretrained weights and extend positional embeddings
+            
+            # IMAGE ENCODER
+            self.mean_image_projection = nn.Parameter(
+                self.model.visual.proj.data.clone()
+            )
+            # Extend visual positional embeddings: copy pretrained + add 1 new random position
+            old_visual_pos = self.model.visual.positional_embedding.data.clone()
+            new_visual_pos = torch.zeros(visual_seq_length + 1, vision_width, device=self.device)
+            new_visual_pos[:visual_seq_length, :] = old_visual_pos
+            new_visual_pos[visual_seq_length, :] = scale * torch.randn(vision_width)
+            self.model.visual.positional_embedding = nn.Parameter(new_visual_pos)
+
+            # TEXT ENCODER
+            self.mean_text_projection = nn.Parameter(
+                self.model.text_projection.data.clone()
+            )
+            # Extend text positional embeddings: copy pretrained + add 1 new random position
+            old_text_pos = self.model.positional_embedding.data.clone()
+            new_text_pos = torch.zeros(text_seq_length + 1, transformer_width, device=self.device)
+            new_text_pos[:text_seq_length, :] = old_text_pos
+            new_text_pos[text_seq_length, :] = text_scale * torch.randn(transformer_width)
+            self.model.positional_embedding = nn.Parameter(new_text_pos)
+        else:
+            # ===== RANDOM INITIALIZATION =====
+            # Randomly initialize everything from scratch
+            
+            # IMAGE ENCODER - random projection
+            self.mean_image_projection = nn.Parameter(
+                scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM)
+            )
+            # Random visual positional embeddings (extended length)
+            self.model.visual.positional_embedding = nn.Parameter(
+                scale * torch.randn(visual_seq_length + 1, vision_width)
+            )
+
+            # TEXT ENCODER - random projection
+            self.mean_text_projection = nn.Parameter(
+                text_scale * torch.randn(transformer_width, CLIP_EMBEDDING_DIM)
+            )
+            # Random text positional embeddings (extended length)
+            self.model.positional_embedding = nn.Parameter(
+                text_scale * torch.randn(text_seq_length + 1, transformer_width)
+            )
+
+            # Reinitialize all CLIP backbone weights randomly
+            self._reinitialize_clip_weights()
+
+        # ===== VARIANCE PROJECTIONS (always random, no pretrained equivalent) =====
         if model_type == "Spherical":
             self.var_image_projection = nn.Parameter(
                 scale * torch.randn(vision_width, 1)
+            )
+            self.var_text_projection = nn.Parameter(
+                text_scale * torch.randn(transformer_width, 1)
             )
         else:
             self.var_image_projection = nn.Parameter(
                 scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM)
             )
-        # Modify positional embeddings to account for additional concentration token
-        sequence_length: int = self.model.visual.positional_embedding.shape[0] # type: ignore
-        self.model.visual.positional_embedding = nn.Parameter(scale * torch.randn(sequence_length + 1, vision_width))
+            self.var_text_projection = nn.Parameter(
+                text_scale * torch.randn(transformer_width, CLIP_EMBEDDING_DIM)
+            )
 
-        # HACK: Clip uses the transformer.width parameter to initialize the projection layer
-        # As such, we need to extract that width parameter.
-        transformer_width = self.model.transformer.width
-        self.mean_text_projection = nn.Parameter(
-            scale * torch.randn(transformer_width, CLIP_EMBEDDING_DIM)
-        )
-        if model_type == "Spherical":
-            self.var_text_projection = nn.Parameter(
-                scale * torch.randn(transformer_width, 1)
-            )
-        else:
-            self.var_text_projection = nn.Parameter(
-                scale * torch.randn(transformer_width, CLIP_EMBEDDING_DIM)
-            )
-        # Modify positional embeddings to account for additional concentration token
-        sequence_length = self.model.positional_embedding.shape[0] # type: ignore
-        self.model.positional_embedding = nn.Parameter(scale * torch.empty(sequence_length + 1, transformer_width))
         # Replace the attention masks with (seq length + 1) to account for the concentration token
-        mask = _build_attention_mask(sequence_length + 1)
+        mask = _build_attention_mask(text_seq_length + 1)
         for block in self.model.transformer.resblocks:
             block.attn_mask = mask
-        # CLIP only seems to do this initialization for the text projection
-        nn.init.normal_(self.mean_text_projection, std=transformer_width**-0.5)
-        nn.init.normal_(self.var_text_projection, std=vision_width**-0.5)
 
-        # Add an additional class token for the concetration parameter. Will
-        # be appened to the end of the image patch sequence that feeds into the VIT
+        # ===== CONCENTRATION EMBEDDINGS (always random) =====
         self.image_concentration_embedding = nn.Parameter(
             scale * torch.randn(vision_width)
         )
         self.text_concentration_embedding = nn.Parameter(
-            scale * torch.randn(transformer_width)
+            text_scale * torch.randn(transformer_width)
         )
+
+    def _reinitialize_clip_weights(self):
+        """Reinitialize all CLIP backbone weights randomly."""
+        for module in self.model.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, std=0.02)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Conv2d):
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.ones_(module.weight)
+                nn.init.zeros_(module.bias)
+            elif isinstance(module, nn.Embedding):
+                nn.init.normal_(module.weight, std=0.02)
+
+    def freeze_backbone(self, freeze: bool = True):
+        """
+        Freeze or unfreeze the CLIP backbone weights.
+        
+        When frozen, only the new variational layers are trained:
+        - mean_image_projection, mean_text_projection
+        - var_image_projection, var_text_projection
+        - image_concentration_embedding, text_concentration_embedding
+        - Extended positional embedding positions (last position only)
+        
+        Args:
+            freeze: If True, freeze backbone. If False, unfreeze (allow training).
+        """
+        # Freeze/unfreeze all parameters in the CLIP backbone
+        for param in self.model.parameters():
+            param.requires_grad = not freeze
+        
+        # Always keep our new layers trainable (they're direct attributes, not in self.model)
+        # These are already separate nn.Parameters so they won't be affected by the above loop
+        
+        # Log the status
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        total_params = sum(p.numel() for p in self.parameters())
+        frozen_params = total_params - trainable_params
+        
+        status = "frozen" if freeze else "unfrozen"
+        print(f"Backbone {status}. Trainable: {trainable_params:,} / {total_params:,} params ({frozen_params:,} frozen)")
+        
+        return self
+
+    def unfreeze_backbone(self):
+        """Convenience method to unfreeze the backbone."""
+        return self.freeze_backbone(freeze=False)
+
+    def get_trainable_params(self):
+        """Return only trainable parameters (useful for optimizer)."""
+        return [p for p in self.parameters() if p.requires_grad]
 
     def encode_image_internal(
         self, x: torch.Tensor
@@ -135,6 +228,9 @@ class VariationalCLIPModel(ClipInterface):
 
         mean_embedding = mean_embedding @ self.mean_image_projection
         concentration_embedding = concentration_embedding @ self.var_image_projection
+
+        if self.model_type == "Spherical":
+            concentration_embedding = concentration_embedding.squeeze(-1)
         return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
 
     def encode_text_internal(
@@ -155,8 +251,11 @@ class VariationalCLIPModel(ClipInterface):
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         mean_embedding = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.mean_text_projection
+        # Concentration token is always at the last position (appended at the end)
+        concentration_embedding = x[:, -1, :] @ self.var_text_projection
 
-        concentration_embedding  = x[torch.arange(x.shape[0]), text.argmax(dim=-1) + 1] @ self.var_text_projection
+        if self.model_type == "Spherical":
+            concentration_embedding = concentration_embedding.squeeze(-1)
         return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
 
     def get_logits_scale(self) -> torch.Tensor:

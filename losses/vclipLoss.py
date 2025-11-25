@@ -45,13 +45,13 @@ class VClipLoss(nn.Module):
         use_mean_only: If True, use only the mean/mode instead of sampling
     """
 
-    def __init__(self, kl_weight=1.0, num_samples=20, distribution_type='power_spherical', use_mean_only=False):
+    def __init__(self, kl_weight=1.0, num_samples=20, distribution_type='power_spherical', use_mean_only=False, label_smoothing=0.1):
         super(VClipLoss, self).__init__()
         self.kl_weight = kl_weight
         self.num_samples = num_samples
         self.distribution_type = distribution_type
         self.use_mean_only = use_mean_only
-        self.clip_loss = ClipLoss()
+        self.clip_loss = ClipLoss(label_smoothing)
 
     def forward(self,
                 image_distribution: Distribution,

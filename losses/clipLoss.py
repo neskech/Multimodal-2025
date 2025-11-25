@@ -38,19 +38,19 @@ class ClipLoss(nn.Module):
         text_features = torch.nn.functional.normalize(text_features, dim=-1, p=2)
 
         # Clamp to avoid numerical issues
-        image_features = torch.clamp(image_features, -1.0, 1.0)
-        text_features = torch.clamp(text_features, -1.0, 1.0)
+        # image_features = torch.clamp(image_features, -1.0, 1.0)
+        # text_features = torch.clamp(text_features, -1.0, 1.0)
 
         batch_size = image_features.shape[0]
 
         # cosine similarity as logits
-        logit_scale = logits_scale.exp()
+        logit_scale = logits_scale.clamp(max=4.6052).exp()
         logits_per_image = logit_scale.float() * image_features.float() @ text_features.t().float()
         logits_per_text = logits_per_image.t()
 
         # Clamp logits to avoid overflow in exp
-        logits_per_image = torch.clamp(logits_per_image, -20, 20)
-        logits_per_text = torch.clamp(logits_per_text, -20, 20)
+        # logits_per_image = torch.clamp(logits_per_image, -20, 20)
+        # logits_per_text = torch.clamp(logits_per_text, -20, 20)
 
         # Create labels (diagonal elements are positive pairs)
         labels = torch.arange(batch_size, device=image_features.device)
