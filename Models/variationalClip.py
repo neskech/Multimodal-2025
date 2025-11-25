@@ -118,10 +118,23 @@ class VariationalCLIPModel(ClipInterface):
         return mean_embedding, concentration_embedding
 
     def encode_text_internal(
-        self, x: torch.Tensor
+        self, text: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # TODO: Implement
-        pass
+        # NOTE: Highly copy and pasted from the text forward function in CLIP
+        x = torch.cat(self.token_embedding(text).type(self.dtype), self.text_concentration_embedding)  # [batch_size, n_ctx, d_model]
+
+        x = x + self.model.text.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.model.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.model.ln_final(x).type(self.dtype)
+        # x.shape = [batch_size, n_ctx, transformer.width]
+        # take features from the eot embedding (eot_token is the highest number in each sequence)
+        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.mean_text_projection
+
+        mean_embedding = x
+        concentration_embedding = x = x[torch.arange(x.shape[0]), text.argmax(dim=-1) + 1] @ self.var_text_projection
+        return mean_embedding, concentration_embedding
 
     def get_logits_scale(self) -> torch.Tensor:
         """Get the logits scale parameter."""
