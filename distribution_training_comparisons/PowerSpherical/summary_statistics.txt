@@ -1,0 +1,18 @@
+Distribution: PowerSpherical
+============================================================
+
+Concentration/Sigma Statistics:
+  Average Concentration A before: 0.100000
+  Average Concentration A after: 28.051630
+  Average Concentration B before: 0.100000
+  Average Concentration B after: 27.995819
+
+Arc Length Statistics:
+  Initial average: 0.004611 radians (0.26°)
+  Final average: 0.018093 radians (1.04°)
+  Change: 0.013482 radians (0.77°)
+
+Final Loss Values:
+  Total Loss: 5.247172
+  Contrastive Loss: 5.072410
+  KL Loss: 3.495248

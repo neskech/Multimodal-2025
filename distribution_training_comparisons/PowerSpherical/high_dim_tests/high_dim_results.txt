@@ -1,0 +1,25 @@
+Distribution: PowerSpherical
+============================================================
+
+High-Dimensional Testing Results:
+
+Dimension 10:
+  Tested successfully
+  Samples generated: 100
+  All tests passed
+
+Dimension 50:
+  Tested successfully
+  Samples generated: 100
+  All tests passed
+
+Dimension 128:
+  Tested successfully
+  Samples generated: 100
+  All tests passed
+
+Dimension 512:
+  Tested successfully
+  Samples generated: 100
+  All tests passed
+
