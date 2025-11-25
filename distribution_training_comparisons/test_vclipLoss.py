@@ -7,12 +7,20 @@ plotting the gradients to ensure the KL term makes the variance increase
 from typing_extensions import Literal
 import torch
 import matplotlib.pyplot as plt
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from losses.distributions.VonMisesFisher import VonMisesFisher
+from losses.distributions.ProjectedNormal import ProjectedNormal
 from losses.vclipLoss import VClipLoss
 from power_spherical import PowerSpherical
 import numpy as np
 from PIL import Image
 import io
+import os
 
 
 def riemannian_gradient(x, euclidean_grad):
@@ -167,10 +175,20 @@ def create_snapshot_frame(og_features_a, og_features_b, features_a, features_b,
     
     return image
 
-def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = "PowerSpherical"):
+def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher", "ProjectedNormal"] = "PowerSpherical", output_dir: str = "."):
     torch.manual_seed(42)
     batch_size = 10
     feature_dim = 2
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    dist_dir = os.path.join(output_dir, distribution)
+    os.makedirs(dist_dir, exist_ok=True)
+    
+    print(f"\n{'='*60}")
+    print(f"Testing with {distribution}")
+    print(f"Output directory: {dist_dir}")
+    print(f"{'='*60}\n")
 
     
     # create two sets of features all in a small range of the hypersphere
@@ -185,12 +203,16 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
 
     # PowerSpherical expects concentration shape [batch] (1D)
     # VonMisesFisher expects concentration shape [batch, 1] (2D)
+    # ProjectedNormal expects sigma shape [batch, dim] (same as features)
     if distribution == "PowerSpherical":
         concentrations_a = torch.ones(batch_size*2) * 0.1
         concentrations_b = torch.ones(batch_size*2) * 0.1
-    else:
+    elif distribution == "VonMisesFisher":
         concentrations_a = torch.ones(batch_size*2, 1) * 0.1
         concentrations_b = torch.ones(batch_size*2, 1) * 0.1
+    else:  # ProjectedNormal
+        concentrations_a = torch.ones(batch_size*2, feature_dim) * 0.1
+        concentrations_b = torch.ones(batch_size*2, feature_dim) * 0.1
 
     og_features_a = features_a.clone().detach()
     og_features_b = features_b.clone().detach()
@@ -226,6 +248,17 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
     snapshot_frames = []
     snapshot_interval = 10  # Take snapshot every N epochs
     total_epochs = 1000
+    
+    # Storage for tracking metrics
+    metrics_history = {
+        'total_loss': [],
+        'contrastive_loss': [],
+        'kl_loss': [],
+        'feature_a_grad_norm': [],
+        'feature_b_grad_norm': [],
+        'concentration_a_grad_norm': [],
+        'concentration_b_grad_norm': []
+    }
 
     for epoch in range(total_epochs):
         # Zero gradients manually
@@ -247,6 +280,9 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
         elif distribution == "VonMisesFisher":
             dist_a = VonMisesFisher(features_a, concentrations_a)
             dist_b = VonMisesFisher(features_b, concentrations_b)
+        elif distribution == "ProjectedNormal":
+            dist_a = ProjectedNormal(features_a, concentrations_a)
+            dist_b = ProjectedNormal(features_b, concentrations_b)
         else:
             raise ValueError(f"Unsupported distribution type: {distribution}")
 
@@ -260,6 +296,16 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
 
         # Backpropagate
         loss['total_loss'].backward()
+        
+        # Store metrics for plotting
+        metrics_history['total_loss'].append(loss['total_loss'].item())
+        metrics_history['contrastive_loss'].append(loss['clip_loss'].item())
+        print(loss.keys())
+        metrics_history['kl_loss'].append(loss['image_kl_loss'].item() + loss['text_kl_loss'].item())
+        metrics_history['feature_a_grad_norm'].append(features_a.grad.norm().item())
+        metrics_history['feature_b_grad_norm'].append(features_b.grad.norm().item())
+        metrics_history['concentration_a_grad_norm'].append(concentrations_a.grad.norm().item())
+        metrics_history['concentration_b_grad_norm'].append(concentrations_b.grad.norm().item())
         
         # magnitude of gradient going to features and concentrations
         print(f"Epoch {epoch}: Feature A grad norm: {features_a.grad.norm().item():.6f}, Concentration A grad norm: {concentrations_a.grad.norm().item():.6f}")
@@ -323,7 +369,7 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
         print(f"Total frames: {len(snapshot_frames)}")
         
         # Save as GIF
-        gif_path = 'losses/vclip_training_evolution.gif'
+        gif_path = os.path.join(dist_dir, 'training_evolution.gif')
         snapshot_frames[0].save(
             gif_path,
             save_all=True,
@@ -334,7 +380,7 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
         print(f"✓ Animation saved to {gif_path}")
         
         # Also save a higher quality version with slower playback
-        gif_path_slow = 'losses/vclip_training_evolution_slow.gif'
+        gif_path_slow = os.path.join(dist_dir, 'training_evolution_slow.gif')
         snapshot_frames[0].save(
             gif_path_slow,
             save_all=True,
@@ -345,6 +391,59 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
         print(f"✓ Slow animation saved to {gif_path_slow}\n")
     else:
         print("Warning: No snapshots were captured!")
+
+    # Plot training metrics
+    print(f"\n=== Creating Training Metrics Plots ===")
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    epochs_range = range(len(metrics_history['total_loss']))
+    
+    # Plot 1: Loss components over time
+    ax1 = axes[0, 0]
+    ax1.plot(epochs_range, metrics_history['total_loss'], label='Total Loss', linewidth=2, color='black')
+    ax1.plot(epochs_range, metrics_history['contrastive_loss'], label='Contrastive Loss', linewidth=1.5, color='blue', alpha=0.7)
+    ax1.plot(epochs_range, metrics_history['kl_loss'], label='KL Loss', linewidth=1.5, color='red', alpha=0.7)
+    ax1.set_xlabel('Epoch', fontsize=12)
+    ax1.set_ylabel('Loss', fontsize=12)
+    ax1.set_title('Loss Components Over Training', fontsize=14, fontweight='bold')
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Feature gradient norms
+    ax2 = axes[0, 1]
+    ax2.plot(epochs_range, metrics_history['feature_a_grad_norm'], label='Feature A Grad Norm', linewidth=1.5, color='cyan', alpha=0.8)
+    ax2.plot(epochs_range, metrics_history['feature_b_grad_norm'], label='Feature B Grad Norm', linewidth=1.5, color='green', alpha=0.8)
+    ax2.set_xlabel('Epoch', fontsize=12)
+    ax2.set_ylabel('Gradient Norm', fontsize=12)
+    ax2.set_title('Feature Gradient Norms Over Training', fontsize=14, fontweight='bold')
+    ax2.legend(fontsize=10)
+    ax2.grid(True, alpha=0.3)
+    
+    # Plot 3: Concentration/Sigma gradient norms
+    ax3 = axes[1, 0]
+    ax3.plot(epochs_range, metrics_history['concentration_a_grad_norm'], label='Concentration A Grad Norm', linewidth=1.5, color='orange', alpha=0.8)
+    ax3.plot(epochs_range, metrics_history['concentration_b_grad_norm'], label='Concentration B Grad Norm', linewidth=1.5, color='purple', alpha=0.8)
+    ax3.set_xlabel('Epoch', fontsize=12)
+    ax3.set_ylabel('Gradient Norm', fontsize=12)
+    ax3.set_title('Concentration/Sigma Gradient Norms Over Training', fontsize=14, fontweight='bold')
+    ax3.legend(fontsize=10)
+    ax3.grid(True, alpha=0.3)
+    
+    # Plot 4: Loss ratio (contrastive vs KL)
+    ax4 = axes[1, 1]
+    loss_ratio = np.array(metrics_history['contrastive_loss']) / (np.array(metrics_history['kl_loss']) + 1e-8)
+    ax4.plot(epochs_range, loss_ratio, label='Contrastive / KL Ratio', linewidth=2, color='darkviolet')
+    ax4.axhline(y=1.0, color='gray', linestyle='--', linewidth=1, alpha=0.5, label='Equal Contribution')
+    ax4.set_xlabel('Epoch', fontsize=12)
+    ax4.set_ylabel('Loss Ratio', fontsize=12)
+    ax4.set_title('Contrastive to KL Loss Ratio', fontsize=14, fontweight='bold')
+    ax4.legend(fontsize=10)
+    ax4.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    metrics_plot_path = os.path.join(dist_dir, 'training_metrics.png')
+    plt.savefig(metrics_plot_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Training metrics plot saved to {metrics_plot_path}")
+    plt.close()
 
 
     # find the range of the angles and concentrations before and after the update
@@ -383,7 +482,10 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
     plt.ylabel('Count')
     
     plt.tight_layout()
-    plt.show()
+    angles_plot_path = os.path.join(dist_dir, 'angle_histograms.png')
+    plt.savefig(angles_plot_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Angle histograms saved to {angles_plot_path}")
+    plt.close()
 
     # plot the vectors before the update
     plt.figure(figsize=(10, 10))
@@ -414,7 +516,34 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
     plt.xlabel('Dimension 1')
     plt.ylabel('Dimension 2')
     plt.grid(True, alpha=0.3)
-    plt.show()
+    features_plot_path = os.path.join(dist_dir, 'feature_trajectories.png')
+    plt.savefig(features_plot_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Feature trajectories saved to {features_plot_path}")
+    plt.close()
+
+    # Save summary statistics to text file
+    summary_path = os.path.join(dist_dir, 'summary_statistics.txt')
+    with open(summary_path, 'w') as f:
+        f.write(f"Distribution: {distribution}\n")
+        f.write(f"{'='*60}\n\n")
+        f.write("Concentration/Sigma Statistics:\n")
+        f.write(f"  Average Concentration A before: {og_concentrations_a.mean().item():.6f}\n")
+        f.write(f"  Average Concentration A after: {concentrations_a.mean().item():.6f}\n")
+        f.write(f"  Average Concentration B before: {og_concentrations_b.mean().item():.6f}\n")
+        f.write(f"  Average Concentration B after: {concentrations_b.mean().item():.6f}\n")
+        f.write(f"\nArc Length Statistics:\n")
+        f.write(f"  Initial average: {initial_arc_lengths.mean().item():.6f} radians ({initial_arc_lengths.mean().item() * 180 / 3.14159:.2f}°)\n")
+        f.write(f"  Final average: {final_arc_lengths.mean().item():.6f} radians ({final_arc_lengths.mean().item() * 180 / 3.14159:.2f}°)\n")
+        f.write(f"  Change: {(final_arc_lengths.mean() - initial_arc_lengths.mean()).item():.6f} radians ({(final_arc_lengths.mean() - initial_arc_lengths.mean()).item() * 180 / 3.14159:.2f}°)\n")
+        f.write(f"\nFinal Loss Values:\n")
+        f.write(f"  Total Loss: {metrics_history['total_loss'][-1]:.6f}\n")
+        f.write(f"  Contrastive Loss: {metrics_history['contrastive_loss'][-1]:.6f}\n")
+        f.write(f"  KL Loss: {metrics_history['kl_loss'][-1]:.6f}\n")
+    
+    print(f"✓ Summary statistics saved to {summary_path}")
+    print(f"\n{'='*60}")
+    print(f"All outputs saved to: {dist_dir}")
+    print(f"{'='*60}\n")
 
     # plot the concentrations before and after the update in a bar chart
     print("Average Concentration A before:", og_concentrations_a.mean().item())
@@ -422,15 +551,53 @@ def test_vclip_loss(distribution: Literal["PowerSpherical", "VonMisesFisher"] = 
     print("Average Concentration B before:", og_concentrations_b.mean().item())
     print("Average Concentration B after:", concentrations_b.mean().item())
 
+
 if __name__ == "__main__":
-    # Test with PowerSpherical (default)
-    print("=" * 60)
-    print("Testing with PowerSpherical")
-    print("=" * 60)
-    test_vclip_loss("VonMisesFisher")
+    output_dir = "."
+    distributions_to_test = ["PowerSpherical", "VonMisesFisher", "ProjectedNormal"]
     
-    # Uncomment to test with VonMisesFisher
-    # print("\n" + "=" * 60)
-    # print("Testing with VonMisesFisher")
-    # print("=" * 60)
-    # test_vclip_loss(use_powerspherical=False)
+    print("\n" + "=" * 80)
+    print("TESTING ALL DISTRIBUTIONS - VClip Loss Comparison")
+    print("=" * 80)
+    print(f"\nDistributions to test: {', '.join(distributions_to_test)}")
+    print(f"Output directory: {output_dir}")
+    print("\n" + "=" * 80 + "\n")
+    
+    # Test all three distributions
+    for distribution in distributions_to_test:
+        test_vclip_loss(distribution, output_dir)
+    
+    # Create a comparison summary
+    summary_file = os.path.join(output_dir, "comparison_summary.txt")
+    with open(summary_file, 'w') as f:
+        f.write("VClip Loss - Distribution Comparison Summary\n")
+        f.write("=" * 80 + "\n\n")
+        f.write(f"Tested Distributions: {', '.join(distributions_to_test)}\n")
+        f.write(f"Total Epochs: 1000\n")
+        f.write(f"Batch Size: 10 (doubled for pairs)\n")
+        f.write(f"Feature Dimension: 2D\n")
+        f.write(f"KL Weight: 0.1\n")
+        f.write(f"\nOutput Structure:\n")
+        for dist in distributions_to_test:
+            f.write(f"\n{dist}/\n")
+            f.write(f"  ├── training_evolution.gif (200ms per frame)\n")
+            f.write(f"  ├── training_evolution_slow.gif (500ms per frame)\n")
+            f.write(f"  ├── training_metrics.png (loss and gradient plots)\n")
+            f.write(f"  ├── angle_histograms.png (before/after distributions)\n")
+            f.write(f"  ├── feature_trajectories.png (movement on unit sphere)\n")
+            f.write(f"  └── summary_statistics.txt (numerical results)\n")
+        f.write(f"\nTo compare distributions:\n")
+        f.write(f"1. Review training_metrics.png for each distribution\n")
+        f.write(f"2. Compare convergence speed and stability\n")
+        f.write(f"3. Check summary_statistics.txt for final values\n")
+        f.write(f"4. Watch training animations to see dynamics\n")
+    
+    print("\n" + "=" * 80)
+    print("ALL TESTS COMPLETED!")
+    print("=" * 80)
+    print(f"\nAll results saved to: {output_dir}/")
+    print(f"Comparison summary: {summary_file}")
+    print("\nDirectory structure:")
+    for dist in distributions_to_test:
+        print(f"  {output_dir}/{dist}/")
+    print("=" * 80 + "\n")

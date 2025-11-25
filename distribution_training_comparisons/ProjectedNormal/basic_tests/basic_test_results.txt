@@ -1,0 +1,16 @@
+Distribution: ProjectedNormal
+============================================================
+
+Test Configuration:
+  Batch size: 10
+  Dimensions: 2
+  Parameter name: sigma
+
+Sampling Test:
+  Samples generated: 100
+  Sample norms (first 5): tensor([1.0000, 1.0000, 1.0000, 1.0000, 1.0000])
+
+Gradient Flow Test:
+  Loss: 0.332390
+  Location gradient norm: 0.169868
+  Sigma gradient norm: 1.558896

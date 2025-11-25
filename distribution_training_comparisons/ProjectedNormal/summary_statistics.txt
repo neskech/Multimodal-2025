@@ -1,0 +1,18 @@
+Distribution: ProjectedNormal
+============================================================
+
+Concentration/Sigma Statistics:
+  Average Concentration A before: 0.100000
+  Average Concentration A after: 4391.962402
+  Average Concentration B before: 0.100000
+  Average Concentration B after: 8139.985840
+
+Arc Length Statistics:
+  Initial average: 0.004611 radians (0.26°)
+  Final average: 0.046085 radians (2.64°)
+  Change: 0.041474 radians (2.38°)
+
+Final Loss Values:
+  Total Loss: 6.143336
+  Contrastive Loss: 7.369448
+  KL Loss: -24.522227

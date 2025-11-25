@@ -1,0 +1,16 @@
+Distribution: PowerSpherical
+============================================================
+
+Test Configuration:
+  Batch size: 10
+  Dimensions: 2
+  Parameter name: concentration
+
+Sampling Test:
+  Samples generated: 100
+  Sample norms (first 5): tensor([1.0000, 1.0000, 1.0000, 1.0000, 1.0000])
+
+Gradient Flow Test:
+  Loss: 2.403628
+  Location gradient norm: 2.487956
+  Concentration gradient norm: 0.155206

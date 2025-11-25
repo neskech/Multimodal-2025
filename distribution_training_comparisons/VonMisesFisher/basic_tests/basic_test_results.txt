@@ -1,0 +1,16 @@
+Distribution: VonMisesFisher
+============================================================
+
+Test Configuration:
+  Batch size: 10
+  Dimensions: 2
+  Parameter name: concentration
+
+Sampling Test:
+  Samples generated: 100
+  Sample norms (first 5): tensor([1., 1., 1., 1., 1.])
+
+Gradient Flow Test:
+  Loss: 0.233543
+  Location gradient norm: 0.000001
+  Concentration gradient norm: 0.002203
