@@ -37,7 +37,8 @@ class CocoDataset(torch.utils.data.Dataset):
         self.tokenize = tokenize
         self.preprocess = clip_preprocessor()
 
-        logger.info(f"Loading COCO {split} dataset...")
+        logger.info(f"Loading COCO {split} dataset from {data_dir}...")
+        logger.info("lsdir: " + str(os.listdir(data_dir)))
         coco_dir = os.path.join(self.data_dir, "coco")
         images_dir = os.path.join(coco_dir, "images", self.split)
         if split != "test2017":
