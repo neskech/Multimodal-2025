@@ -4,6 +4,7 @@ CLIP embedding extraction functionality for von Mises-Fisher mixture modeling.
 
 import torch
 import clip
+import numpy as np
 from torch import nn
 from PIL import Image
 from typing import List, Literal, TypeAlias, Union
@@ -32,22 +33,29 @@ class VariationalCLIPModel(ClipInterface):
     Modified to output mean direction (512D) and concentration parameter (1D).
     """
 
-    def __init__(self, model_type: ModelType, device: str | None = None, use_pretrained: bool = True):
+    def __init__(self, model_type: ModelType, device: str | None = None, use_pretrained: bool = True,
+                 min_concentration: float = 10.0, initial_concentration: float = 200.0):
         """
         Initialize CLIP model.
 
-        Args:
+        Args: 
             model_type: Type of model ('Spherical' or 'Gaussian')
                 If spherical, outputs a scalar concentration parameter.
                 If gaussian, outputs a log-variance parameter.
             device: Device to run on ('cuda', 'cpu', or None for auto-detect)
             use_pretrained: If True, initialize projections and positional embeddings 
                 from CLIP's pretrained weights. If False, randomly initialize everything.
+            min_concentration: Minimum concentration value (default: 10.0)
+                Ensures distributions don't collapse to uniform.
+            initial_concentration: Target initial concentration value (default: 200.0)
+                Used to initialize the learnable scale parameters.
         """
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = MODEL_NAME
         self.model_type = model_type
+        self.min_concentration = min_concentration
+        self.initial_concentration = initial_concentration
 
         # Load CLIP model (always load to get architecture, but may reinitialize weights)
         self.model, self.preprocess = clip.load(MODEL_NAME, device=self.device)
@@ -114,11 +122,30 @@ class VariationalCLIPModel(ClipInterface):
 
         # ===== VARIANCE PROJECTIONS (always random, no pretrained equivalent) =====
         if model_type == "Spherical":
+            # Use log space + learnable scale parameter approach
+            # This works better with layer-normalized features:
+            # - Projection learns relative differences in log space (small values, centered around 0)
+            # - Learnable scale parameter controls global magnitude
+            # - Final: concentration = exp(log_scale + log_concentration_raw) + min_concentration
+            
+            target_concentration_net = self.initial_concentration - self.min_concentration
+            
+            # Learnable scale parameters in log space (initialized to log(target))
+            # These control the global magnitude of concentration
+            self.log_concentration_scale_image = nn.Parameter(
+                torch.tensor(np.log(target_concentration_net))  # log(190) ≈ 5.25
+            )
+            self.log_concentration_scale_text = nn.Parameter(
+                torch.tensor(np.log(target_concentration_net))  # log(190) ≈ 5.25
+            )
+            
+            # Projection learns relative differences (initialize small, centered around 0)
+            # Since we're in log space, these can be small and still work with normalized inputs
             self.var_image_projection = nn.Parameter(
-                scale * torch.randn(vision_width, 1)
+                scale * torch.randn(vision_width, 1)  # Small values around 0
             )
             self.var_text_projection = nn.Parameter(
-                text_scale * torch.randn(transformer_width, 1)
+                text_scale * torch.randn(transformer_width, 1)  # Small values around 0
             )
         else:
             self.var_image_projection = nn.Parameter(
@@ -134,11 +161,12 @@ class VariationalCLIPModel(ClipInterface):
             block.attn_mask = mask
 
         # ===== CONCENTRATION EMBEDDINGS (always random) =====
+        # Initialize with smaller variance to encourage more stable learning
         self.image_concentration_embedding = nn.Parameter(
-            scale * torch.randn(vision_width)
+            scale * torch.randn(vision_width) * 0.1
         )
         self.text_concentration_embedding = nn.Parameter(
-            text_scale * torch.randn(transformer_width)
+            text_scale * torch.randn(transformer_width) * 0.1
         )
 
     def _reinitialize_clip_weights(self):
@@ -231,7 +259,23 @@ class VariationalCLIPModel(ClipInterface):
 
         if self.model_type == "Spherical":
             concentration_embedding = concentration_embedding.squeeze(-1)
-        return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
+            # Use log space + learnable scale: log_concentration = log_scale + projection_output
+            # This works well with normalized features (projection learns relative differences)
+            log_concentration_raw = concentration_embedding  # Already in log space from projection
+            log_concentration = self.log_concentration_scale_image + log_concentration_raw
+
+            # Clamp log_concentration to avoid overflow / NaNs in exp and downstream KL
+            LOG_K_MIN = -5.0   # exp(-5)  ~ 0.0067
+            LOG_K_MAX = 10.0   # exp(10)  ~ 22k
+            log_concentration = torch.clamp(log_concentration, LOG_K_MIN, LOG_K_MAX)
+
+            # Convert to concentration: exp(log_concentration) + min_concentration
+            concentration = torch.exp(log_concentration) + self.min_concentration
+        else:
+            # For Gaussian mode, use softplus to ensure positive variance
+            concentration = torch.nn.functional.softplus(concentration_embedding)
+        
+        return mean_embedding, concentration
 
     def encode_text_internal(
         self, text: torch.Tensor
@@ -247,6 +291,8 @@ class VariationalCLIPModel(ClipInterface):
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.model.transformer(x)
         x = x.permute(1, 0, 2)  # LND -> NLD
+
+
         x = self.model.ln_final(x).float()
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
@@ -256,7 +302,23 @@ class VariationalCLIPModel(ClipInterface):
 
         if self.model_type == "Spherical":
             concentration_embedding = concentration_embedding.squeeze(-1)
-        return mean_embedding, torch.nn.functional.softplus(concentration_embedding)
+            # Use log space + learnable scale: log_concentration = log_scale + projection_output
+            # This works well with normalized features (projection learns relative differences)
+            log_concentration_raw = concentration_embedding  # Already in log space from projection
+            log_concentration = self.log_concentration_scale_text + log_concentration_raw
+
+            # Clamp log_concentration to avoid overflow / NaNs in exp and downstream KL
+            LOG_K_MIN = -5.0   # exp(-5)  ~ 0.0067
+            LOG_K_MAX = 10.0   # exp(10)  ~ 22k
+            log_concentration = torch.clamp(log_concentration, LOG_K_MIN, LOG_K_MAX)
+
+            # Convert to concentration: exp(log_concentration) + min_concentration
+            concentration = torch.exp(log_concentration) + self.min_concentration
+        else:
+            # For Gaussian mode, use softplus to ensure positive variance
+            concentration = torch.nn.functional.softplus(concentration_embedding)
+        
+        return mean_embedding, concentration
 
     def get_logits_scale(self) -> torch.Tensor:
         """Get the logits scale parameter."""
