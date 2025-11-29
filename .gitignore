@@ -11,3 +11,4 @@ Notebooks/wandb/
 Notebooks/*.pt
 checkpoints/
 Notebooks/wandb/*
+wandb/
