@@ -49,6 +49,7 @@ class VClipLoss(nn.Module):
                  clip_weight=1.0,
                  kl_weight=1.0,
                  num_samples=20,
+                 var_reg_weight=0.1,
                  distribution_type='power_spherical',
                  use_mean_only=False,
                  label_smoothing=0.1):
@@ -58,11 +59,14 @@ class VClipLoss(nn.Module):
         self.num_samples = num_samples
         self.distribution_type = distribution_type
         self.use_mean_only = use_mean_only
+        self.var_reg_weight = var_reg_weight
         self.clip_loss = ClipLoss(label_smoothing)
 
     def forward(self,
                 image_distribution: Distribution,
                 text_distribution: Distribution,
+                image_vars: torch.Tensor,
+                text_vars: torch.Tensor,
                 logits_scale: torch.Tensor,
                 kl_weight_override: float | None = None):
         """
@@ -107,12 +111,15 @@ class VClipLoss(nn.Module):
         kl_image = self._compute_kl_divergence(image_distribution)
         kl_text = self._compute_kl_divergence(text_distribution)
 
-        total_loss = self.clip_weight * clip_loss + 0.5 * kl_weight * (kl_image + kl_text)
+        var_reg = torch.mean((image_vars - text_vars) ** 2)
+        total_loss = self.clip_weight * clip_loss + 0.5 * kl_weight * (
+            kl_image + kl_text) + self.var_reg_weight * var_reg
 
         return {
             'total_loss': total_loss,
             'clip_loss': clip_loss,
             'image_kl_loss': kl_image,
+            'var_reg': var_reg,
             'text_kl_loss': kl_text
         }
 
@@ -126,6 +133,18 @@ class VClipLoss(nn.Module):
         Returns:
             KL divergence value
         """
+        if isinstance(distribution, torch.distributions.Normal):
+            # Create a standard normal prior matching the device and shape of the input
+            prior = torch.distributions.Normal(
+                torch.zeros_like(distribution.loc),
+                torch.ones_like(distribution.scale)
+            )
+            
+            # Sum over the embedding dimensions (D), average over batch (B) if needed,
+            # but usually kl_divergence returns shape (B, D). 
+            # We explicitly sum over D to get the KL per vector, then mean over batch.
+            kl = torch.distributions.kl_divergence(distribution, prior)
+            return kl.sum(dim=-1).mean()
         if isinstance(distribution, PowerSpherical):
             # Use built-in KL divergence for PowerSpherical
             return torch.distributions.kl_divergence(
