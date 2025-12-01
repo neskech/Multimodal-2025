@@ -111,7 +111,12 @@ class VClipLoss(nn.Module):
         kl_image = self._compute_kl_divergence(image_distribution)
         kl_text = self._compute_kl_divergence(text_distribution)
 
-        var_reg = torch.mean((image_vars - text_vars) ** 2)
+        # In vclipLoss.py, replace line 114:
+        # Current: var_reg = torch.mean((image_vars - text_vars) ** 2)
+        # Better: penalize log ratio
+        log_image_vars = torch.log(image_vars + 1e-8)
+        log_text_vars = torch.log(text_vars + 1e-8)
+        var_reg = torch.mean((log_image_vars - log_text_vars) ** 2)
         total_loss = self.clip_weight * clip_loss + 0.5 * kl_weight * (
             kl_image + kl_text) + self.var_reg_weight * var_reg
 
