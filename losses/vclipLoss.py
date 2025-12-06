@@ -1,3 +1,4 @@
+from pydoc import text
 import torch
 from torch import nn
 from power_spherical import PowerSpherical, HypersphericalUniform
@@ -11,12 +12,22 @@ def power_spherical_mean(distribution: PowerSpherical):
     return distribution.loc * distribution.base_dist.marginal_t.mean.unsqueeze(
         -1)
 
+
+def power_spherical_mean2(distribution: PowerSpherical):
+    alpha = (512 - 1) / 2 + distribution.scale
+    beta = (512 - 1) / 2
+    mean = (alpha - beta) / (alpha + beta)
+    return distribution.loc * mean.unsqueeze(-1)
+
+
 def power_spherical_mean_normalized(distribution: PowerSpherical):
     return distribution.loc
+
 
 def vmf_mean_normalized(distribution: VonMisesFisher):
     """Get the normalized mean (mode) of a VonMisesFisher distribution."""
     return distribution.mode
+
 
 def get_distribution_mean(distribution):
     """Get the mean/mode of a distribution regardless of type."""
@@ -32,12 +43,12 @@ def get_distribution_mean(distribution):
 class VClipLoss(nn.Module):
     """
     Variational CLIP Loss with support for multiple spherical distributions.
-    
+
     Supports:
     - PowerSpherical distribution (default)
     - VonMisesFisher distribution
     - Any distribution that implements rsample() and works on the unit sphere
-    
+
     Args:
         kl_weight: Weight for the KL divergence term
         num_samples: Number of samples to draw from the distributions
@@ -52,6 +63,7 @@ class VClipLoss(nn.Module):
                  var_reg_weight=0.1,
                  distribution_type='power_spherical',
                  use_mean_only=False,
+                 expected_value=False,
                  label_smoothing=0.1):
         super(VClipLoss, self).__init__()
         self.clip_weight = clip_weight
@@ -60,6 +72,7 @@ class VClipLoss(nn.Module):
         self.distribution_type = distribution_type
         self.use_mean_only = use_mean_only
         self.var_reg_weight = var_reg_weight
+        self.expected_value = expected_value
         self.clip_loss = ClipLoss(label_smoothing)
 
     def forward(self,
@@ -68,6 +81,7 @@ class VClipLoss(nn.Module):
                 image_vars: torch.Tensor,
                 text_vars: torch.Tensor,
                 logits_scale: torch.Tensor,
+                is_train: bool,
                 kl_weight_override: float | None = None):
         """
         Compute V-CLIP loss using spherical distributions.
@@ -77,7 +91,7 @@ class VClipLoss(nn.Module):
             text_distribution: Distribution for text embeddings (PowerSpherical or VonMisesFisher)
             logits_scale: Temperature parameter for scaling logits
             kl_weight_override: Optional override for kl_weight
-            
+
         Returns:
             Dictionary with total_loss, clip_loss, image_kl_loss, text_kl_loss
         """
@@ -88,24 +102,38 @@ class VClipLoss(nn.Module):
         # Determine whether to use sampling or just the mean
         use_sampling = kl_weight > 0
 
-        if use_sampling:
+        if use_sampling and is_train:
             # Sample from distributions: shape will be [num_samples, batch_size, embedding_dim]
-            image_samples = image_distribution.rsample((self.num_samples, ))
-            text_samples = text_distribution.rsample((self.num_samples, ))
+            if self.expected_value:
+                clip_loss = self.clip_loss.forward(
+                    power_spherical_mean2(image_distribution),
+                    power_spherical_mean2(text_distribution),
+                    logits_scale,
+                    normalize=False)
+            else:
+                image_samples = image_distribution.rsample(
+                    (self.num_samples, ))
+                text_samples = text_distribution.rsample((self.num_samples, ))
+                # l = 0
+                # for m in range(self.num_samples):
+                #     l = l + self.clip_loss.forward(image_samples[m],text_samples[m], logits_scale)
+                
+                # l = l / self.num_samples
+                # clip_loss = l
+                
+                # #                                text_samples[m], logits_scale)
+                clip_loss = self.clip_loss.forward_sampled(
+                    image_samples, text_samples, logits_scale)
+                clip_loss = clip_loss.mean()
 
-            # Reshape to [num_samples * batch_size, embedding_dim]
-            image_samples_flat = image_samples.mean(
-                dim=0)  # (self.num_samples * B, D)
-            text_samples_flat = text_samples.mean(
-                dim=0)  # (self.num_samples * B, D)
         else:
             # Use mean/mode only
             image_samples_flat = get_distribution_mean(image_distribution)
             text_samples_flat = get_distribution_mean(text_distribution)
 
-        # Compute CLIP loss
-        clip_loss = self.clip_loss.forward(image_samples_flat,
-                                           text_samples_flat, logits_scale)
+            # Compute CLIP loss
+            clip_loss = self.clip_loss.forward(image_samples_flat,
+                                               text_samples_flat, logits_scale)
 
         # Compute KL divergence
         kl_image = self._compute_kl_divergence(image_distribution)
@@ -116,7 +144,12 @@ class VClipLoss(nn.Module):
         # Better: penalize log ratio
         log_image_vars = torch.log(image_vars + 1e-8)
         log_text_vars = torch.log(text_vars + 1e-8)
-        var_reg = torch.mean((log_image_vars - log_text_vars) ** 2)
+        if isinstance(image_distribution, torch.distributions.Normal):
+            # For normal distributions, use log variance directly
+            var_reg = torch.mean(
+                ((log_image_vars - log_text_vars)**2).sum(dim=-1))
+        else:
+            var_reg = torch.mean((log_image_vars - log_text_vars)**2)
         total_loss = self.clip_weight * clip_loss + 0.5 * kl_weight * (
             kl_image + kl_text) + self.var_reg_weight * var_reg
 
@@ -131,10 +164,10 @@ class VClipLoss(nn.Module):
     def _compute_kl_divergence(self, distribution):
         """
         Compute KL divergence to uniform distribution on the sphere.
-        
+
         Args:
             distribution: Either PowerSpherical or VonMisesFisher
-            
+
         Returns:
             KL divergence value
         """
@@ -142,11 +175,10 @@ class VClipLoss(nn.Module):
             # Create a standard normal prior matching the device and shape of the input
             prior = torch.distributions.Normal(
                 torch.zeros_like(distribution.loc),
-                torch.ones_like(distribution.scale)
-            )
-            
+                torch.ones_like(distribution.scale))
+
             # Sum over the embedding dimensions (D), average over batch (B) if needed,
-            # but usually kl_divergence returns shape (B, D). 
+            # but usually kl_divergence returns shape (B, D).
             # We explicitly sum over D to get the KL per vector, then mean over batch.
             kl = torch.distributions.kl_divergence(distribution, prior)
             return kl.sum(dim=-1).mean()

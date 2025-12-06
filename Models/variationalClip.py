@@ -93,7 +93,7 @@ class VariationalCLIPModel(ClipInterface):
             new_visual_pos[
                 visual_seq_length, :] = scale * torch.randn(vision_width)
             self.model.visual.positional_embedding = nn.Parameter(
-                    new_visual_pos.to(self.device))
+                new_visual_pos.to(self.device))
 
             # TEXT ENCODER
             self.mean_text_projection = nn.Parameter(
@@ -114,19 +114,20 @@ class VariationalCLIPModel(ClipInterface):
 
             # IMAGE ENCODER - random projection
             self.mean_image_projection = nn.Parameter(
-                scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM).to(self.device))
+                scale *
+                torch.randn(vision_width, CLIP_EMBEDDING_DIM).to(self.device))
             # Random visual positional embeddings (extended length)
             self.model.visual.positional_embedding = nn.Parameter(
-                scale * torch.randn(visual_seq_length + 1, vision_width).to(self.device))
+                scale * torch.randn(visual_seq_length + 1, vision_width).to(
+                    self.device))
 
             # TEXT ENCODER - random projection
-            self.mean_text_projection = nn.Parameter(
-                text_scale *
-                torch.randn(transformer_width, CLIP_EMBEDDING_DIM).to(self.device))
+            self.mean_text_projection = nn.Parameter(text_scale * torch.randn(
+                transformer_width, CLIP_EMBEDDING_DIM).to(self.device))
             # Random text positional embeddings (extended length)
             self.model.positional_embedding = nn.Parameter(
-                text_scale *
-                torch.randn(text_seq_length + 1, transformer_width).to(self.device))
+                text_scale * torch.randn(text_seq_length + 1,
+                                         transformer_width).to(self.device))
             # Reinitialize all CLIP backbone weights randomly
             self._reinitialize_clip_weights()
 
@@ -146,30 +147,27 @@ class VariationalCLIPModel(ClipInterface):
                 torch.tensor(
                     np.log(target_concentration_net),
                     device=self.device  # Create directly on device
-                )
-            )
+                ))
             self.log_concentration_scale_text = nn.Parameter(
                 torch.tensor(
                     np.log(target_concentration_net),
                     device=self.device  # Create directly on device
-                )
-            )
+                ))
 
             # Projection learns relative differences (initialize small, centered around 0)
             # Since we're in log space, these can be small and still work with normalized inputs
-            self.var_image_projection = nn.Parameter(
-                scale * torch.randn(vision_width, 1).to(self.device)  # Small values around 0
-            )
-            self.var_text_projection = nn.Parameter(
-                text_scale *
-                torch.randn(transformer_width, 1).to(self.device)  # Small values around 0
-            )
+            self.var_image_projection = nn.Parameter(scale * torch.randn(
+                vision_width, 1).to(self.device)  # Small values around 0
+                                                     )
+            self.var_text_projection = nn.Parameter(text_scale * torch.randn(
+                transformer_width, 1).to(self.device)  # Small values around 0
+                                                    )
         else:
             self.var_image_projection = nn.Parameter(
-                scale * torch.randn(vision_width, CLIP_EMBEDDING_DIM).to(self.device))
-            self.var_text_projection = nn.Parameter(
-                text_scale *
-                torch.randn(transformer_width, CLIP_EMBEDDING_DIM).to(self.device))
+                scale *
+                torch.randn(vision_width, CLIP_EMBEDDING_DIM).to(self.device))
+            self.var_text_projection = nn.Parameter(text_scale * torch.randn(
+                transformer_width, CLIP_EMBEDDING_DIM).to(self.device))
 
         # Replace the attention masks with (seq length + 1) to account for the concentration token
         mask = _build_attention_mask(text_seq_length + 1)
@@ -179,9 +177,10 @@ class VariationalCLIPModel(ClipInterface):
         # ===== CONCENTRATION EMBEDDINGS (always random) =====
         # Initialize with smaller variance to encourage more stable learning
         self.image_concentration_embedding = nn.Parameter(
-            scale * torch.randn(vision_width).to(self.device))
+            1 * torch.randn(vision_width).to(self.device))
         self.text_concentration_embedding = nn.Parameter(
             text_scale * torch.randn(transformer_width).to(self.device))
+        # self.model.logit_scale = nn.Parameter(torch.ones([]) * 2.6592)
 
     def _reinitialize_clip_weights(self):
         """Reinitialize all CLIP backbone weights randomly."""
@@ -268,7 +267,7 @@ class VariationalCLIPModel(ClipInterface):
         x = torch.cat([
             mean_embedding_broadcasted, x, concentration_embedding_broadcasted
         ],
-            dim=1)
+                      dim=1)
 
         x = x + self.model.visual.positional_embedding.to(
             x.dtype)  # type: ignore
@@ -279,7 +278,8 @@ class VariationalCLIPModel(ClipInterface):
         x = x.permute(1, 0, 2)  # LND -> NLD
 
         mean_embedding = self.model.visual.ln_post(x[:, 0, :])  # type: ignore
-        concentration_embedding = x[:, -1, :]  # type: ignore
+        concentration_embedding = self.model.visual.ln_post(
+            x[:, -1, :])  # type: ignore
 
         mean_embedding = mean_embedding @ self.mean_image_projection
         concentration_embedding = concentration_embedding @ self.var_image_projection
@@ -291,10 +291,13 @@ class VariationalCLIPModel(ClipInterface):
             # Already in log space from projection
             log_concentration_raw = concentration_embedding
             log_concentration = self.log_concentration_scale_image + log_concentration_raw
-
             # Convert to concentration: exp(log_concentration) + min_concentration
             # Don't clamp log_concentration - it blocks gradients! Clamp final concentration instead
-            concentration = torch.exp(log_concentration) + self.min_concentration
+            log_concentration = torch.clamp(log_concentration,
+                                            min=1e-3,
+                                            max=20)
+            concentration = torch.exp(log_concentration)
+            # concentration = torch.clamp(concentration, min=1e-3, max=20)
             # print("IMAGE CONCENTRATION STATS: LOG CON",
             #       log_concentration.mean().item(), " RAW CONC ",
             #       concentration_embedding.mean().item(), " SCALE CONC ",
@@ -302,11 +305,14 @@ class VariationalCLIPModel(ClipInterface):
             #       (torch.exp(log_concentration) +
             #        self.min_concentration).mean().item(), "IS FROZEN: ",
             #        not self.log_concentration_scale_image.requires_grad)
-            
+
             # Clamp final concentration to prevent overflow while preserving gradient flow
             # This allows gradients to flow through log space while preventing numerical issues
-            MAX_CONCENTRATION = 1e10  # Reasonable upper bound (prevents overflow in PowerSpherical)
-            concentration = torch.clamp(concentration, min=self.min_concentration, max=MAX_CONCENTRATION)
+            MAX_CONCENTRATION = 1e12  # Reasonable upper bound (prevents overflow in PowerSpherical)
+            concentration = torch.clamp(concentration,
+                                        min=self.min_concentration,
+                                        max=MAX_CONCENTRATION)
+            # print("IMAGE CONC", concentration.mean().item(), log_concentration.mean().item(), log_concentration_raw.mean().item(), self.log_concentration_scale_image.item())
         else:
             # For Gaussian mode, use softplus to ensure positive variance
             concentration = torch.exp(concentration_embedding)
@@ -322,7 +328,7 @@ class VariationalCLIPModel(ClipInterface):
             self.model.token_embedding(text).float(),
             concentration_embedding_batched
         ],
-            dim=1)  # [batch_size, n_ctx, d_model]
+                      dim=1)  # [batch_size, n_ctx, d_model]
         x = x + self.model.positional_embedding.float()
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.model.transformer(x)
@@ -331,10 +337,12 @@ class VariationalCLIPModel(ClipInterface):
         x = x.float()
         # x.shape = [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
-        mean_embedding = self.model.ln_final(x)[torch.arange(x.shape[0]),
-                           text.argmax(dim=-1)] @ self.mean_text_projection
+        mean_embedding = self.model.ln_final(x)[
+            torch.arange(x.shape[0]),
+            text.argmax(dim=-1)] @ self.mean_text_projection
         # Concentration token is always at the last position (appended at the end)
-        concentration_embedding = x[:, -1, :] @ self.var_text_projection
+        concentration_embedding = self.model.ln_final(
+            x)[:, -1, :] @ self.var_text_projection
 
         if self.model_type == "Spherical":
             concentration_embedding = concentration_embedding.squeeze(-1)
@@ -343,10 +351,12 @@ class VariationalCLIPModel(ClipInterface):
             # Already in log space from projection
             log_concentration_raw = concentration_embedding
             log_concentration = self.log_concentration_scale_text + log_concentration_raw
-
+            log_concentration = torch.clamp(log_concentration,
+                                            min=1e-3,
+                                            max=20)
             # Convert to concentration: exp(log_concentration) + min_concentration
             # Don't clamp log_concentration - it blocks gradients! Clamp final concentration instead
-            concentration = torch.exp(log_concentration) + self.min_concentration
+            concentration = torch.exp(log_concentration)
 
             # print("TEXT CONCENTRATION STATS: LOG CONC",
             #       log_concentration.mean().item(), " RAW CONC ",
@@ -355,11 +365,14 @@ class VariationalCLIPModel(ClipInterface):
             #       (torch.exp(log_concentration) +
             #        self.min_concentration).mean().item(),
             #        "IS FROZEN: ", not self.log_concentration_scale_text.requires_grad)
-            
+
             # Clamp final concentration to prevent overflow while preserving gradient flow
             # This allows gradients to flow through log space while preventing numerical issues
-            MAX_CONCENTRATION = 1e10  # Reasonable upper bound (prevents overflow in PowerSpherical)
-            concentration = torch.clamp(concentration, min=self.min_concentration, max=MAX_CONCENTRATION)
+            MAX_CONCENTRATION = 1e12  # Reasonable upper bound (prevents overflow in PowerSpherical)
+            concentration = torch.clamp(concentration,
+                                        min=self.min_concentration,
+                                        max=MAX_CONCENTRATION)
+            # print("TEXT CONC", concentration.mean().item(), log_concentration.mean().item(), log_concentration_raw.mean().item(), self.log_concentration_scale_text.item())
         else:
             # For Gaussian mode, use softplus to ensure positive variance
             concentration = torch.exp(concentration_embedding)
